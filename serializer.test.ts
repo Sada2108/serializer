@@ -15,8 +15,8 @@ import {
   nirToCircuitJson,
   renderCircuitJson,
   detectNirSchemaVersion,
-} from "./open_forge/serializer"
-import { libbrechtHallNir, instrumentationAmpNir } from "./open_forge/fixtures"
+} from "./serializer/serializer"
+import { libbrechtHallNir, instrumentationAmpNir } from "./serializer/fixtures"
 
 // --------------------------------------------------------------------------- //
 // Schema detection
