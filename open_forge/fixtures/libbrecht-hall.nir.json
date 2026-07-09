@@ -1,0 +1,47 @@
+{
+  "nir_schema_version": "0.1",
+  "fixture_name": "Libbrecht-Hall",
+  "placement_notes": [
+    "Resistor Rf must be at least 1.5 mm from opamp U1 - thermal keep-away",
+    "Capacitor Cin must lie within 2 mm of U1 non_inverting_input pin",
+    "No copper pour under U1 keepout region"
+  ],
+  "datasheet_context": {
+    "U1":  { "part": "TL072", "package": "soic8", "thermal": "625 mW", "keepout_mm": 1 },
+    "Rf":  { "value": "9k",   "tolerance": "1%", "package": "0402" },
+    "Rg":  { "value": "1k",   "tolerance": "1%", "package": "0402" },
+    "Cin": { "value": "100nF", "package": "0402" },
+    "Cout":{ "value": "100nF", "package": "0402" }
+  },
+  "circuit_json": {
+    "components": [
+      { "name": "VCC", "type": "voltage_source", "voltage": "5V",  "schX": -12, "schY":  8 },
+      { "name": "VEE", "type": "voltage_source", "voltage": "-5V", "schX": -12, "schY": -8 },
+      { "name": "U1",  "type": "opamp",   "footprint": "soic8", "schX":  0, "schY":  0, "flagged": false },
+      { "name": "Rf",  "type": "resistor","resistance": "9k",   "footprint": "0402", "schX":  6, "schY":  4 },
+      { "name": "Rg",  "type": "resistor","resistance": "1k",   "footprint": "0402", "schX":  6, "schY": -4 },
+      { "name": "Cin", "type": "capacitor","capacitance": "100nF","footprint": "0402","schX": -8, "schY":  0 },
+      { "name": "Cout","type": "capacitor","capacitance": "100nF","footprint": "0402","schX": 12, "schY":  0 }
+    ],
+    "nets": [
+      { "name": "VCC", "isPowerNet": true },
+      { "name": "VEE", "isGroundNet": true },
+      { "name": "IN" },
+      { "name": "OUT" },
+      { "name": "FB" }
+    ],
+    "traces": [
+      { "from": "net.VCC",            "to": "U1.positive_supply" },
+      { "from": "net.VEE",            "to": "U1.negative_supply" },
+      { "from": "net.IN",             "to": "Cin.pin1" },
+      { "from": "Cin.pin2",           "to": "U1.non_inverting_input" },
+      { "from": "U1.output",          "to": "Rf.pin1" },
+      { "from": "Rf.pin2",            "to": "net.FB" },
+      { "from": "Rg.pin1",            "to": "net.FB" },
+      { "from": "Rg.pin2",            "to": "net.GND" },
+      { "from": "U1.output",          "to": "Cout.pin1" },
+      { "from": "Cout.pin2",           "to": "net.OUT" },
+      { "from": "net.GND",            "to": "net.VEE" }
+    ]
+  }
+}
