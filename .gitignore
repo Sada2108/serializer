@@ -4,3 +4,8 @@ __pycache__/
 *.pyc
 .DS_Store
 output*.svg
+serializer/orchestrator.py
+serializer/verifier.py
+render.js
+diag_routing.ts
+test_orchestrator.py
