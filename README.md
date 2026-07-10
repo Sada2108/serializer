@@ -48,10 +48,10 @@ const result = serializeNir(instrumentationAmpNir)
 
 **From Python:**
 ```python
-from open_forge.serializer import serialize_nir
+from serializer.serializer import serialize_nir
 import json
 
-with open("open_forge/fixtures/instrumentation_amp_001.nir.json") as f:
+with open("serializer/fixtures/instrumentation_amp_001.nir.json") as f:
     nir = json.load(f)
 
 result = serialize_nir(nir)
