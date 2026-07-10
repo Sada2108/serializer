@@ -1,4 +1,4 @@
-# Open_Forge — Layer 3 Serializer
+# Layer 3 Serializer
 
 Converts NIR (Neutral Intermediate Representation) circuit data into a rendered
 SVG schematic, via Circuit JSON as the intermediate format.
@@ -27,11 +27,11 @@ NIR (JSON) → parse & validate → Circuit JSON → layout → SVG
 
 | File | Purpose |
 |---|---|
-| `open_forge/serializer.ts` | Core serializer logic (schema parsing, layout, symbol rendering, wire routing) |
-| `open_forge/serializer.py` | Python wrapper — calls `serializer.ts` via a Node subprocess bridge |
-| `open_forge/fixtures/index.ts` | Typed NIR fixture loader |
-| `open_forge/fixtures/libbrecht-hall.nir.json` | Legacy (v0.1) schema test fixture |
-| `open_forge/fixtures/instrumentation_amp_001.nir.json` | Current (v1.1) schema test fixture |
+| `serializer/serializer.ts` | Core serializer logic (schema parsing, layout, symbol rendering, wire routing) |
+| `serializer/serializer.py` | Python wrapper — calls `serializer.ts` via a Node subprocess bridge |
+| `serializer/fixtures/index.ts` | Typed NIR fixture loader |
+| `serializer/fixtures/libbrecht-hall.nir.json` | Legacy (v0.1) schema test fixture |
+| `serializer/fixtures/instrumentation_amp_001.nir.json` | Current (v1.1) schema test fixture |
 | `serializer.test.ts` | bun test suite (schema detection, end-to-end rendering, loud-failure cases) |
 | `test_serializer.py` | pytest suite for the Python bridge |
 
@@ -39,8 +39,8 @@ NIR (JSON) → parse & validate → Circuit JSON → layout → SVG
 
 **From TypeScript:**
 ```ts
-import { serializeNir } from "./open_forge/serializer"
-import { instrumentationAmpNir } from "./open_forge/fixtures"
+import { serializeNir } from "./serializer/serializer"
+import { instrumentationAmpNir } from "./serializer/fixtures"
 
 const result = serializeNir(instrumentationAmpNir)
 // result.circuitJson, result.svg, result.viewerUsed
