@@ -1,0 +1,357 @@
+ {
+  "schema_version": "1.1",
+  "design_id": "opamp_noninv_001",
+  "prompt": "Design a non-inverting op-amp amplifier with gain of ~11x for a low-frequency audio/sensor signal, single 5V supply, AC-coupled input and output.",
+
+  "design_methodology": {
+    "created_at": "2026-07-15T00:00:00Z",
+    "pipeline_version": "v1.1.0",
+    "topology": "non_inverting_amplifier"
+  },
+
+  "components": [
+    {
+      "ref": "U1",
+      "component_type": "opamp",
+      "value": "OPA2340",
+      "footprint": "SOIC-8",
+      "position": { "x": 40, "y": 30 },
+      "confidence": { "schematic": 0.95, "pcb": 0.9 }
+    },
+    {
+      "ref": "R1",
+      "component_type": "resistor",
+      "value": "1k",
+      "footprint": "0603",
+      "position": { "x": 25, "y": 45 },
+      "confidence": { "schematic": 0.9, "pcb": 0.85 },
+      "role": "gain_set_lower"
+    },
+    {
+      "ref": "R2",
+      "component_type": "resistor",
+      "value": "10k",
+      "footprint": "0603",
+      "position": { "x": 25, "y": 20 },
+      "confidence": { "schematic": 0.9, "pcb": 0.85 },
+      "role": "gain_set_feedback"
+    },
+    {
+      "ref": "R3",
+      "component_type": "resistor",
+      "value": "100k",
+      "footprint": "0603",
+      "position": { "x": 10, "y": 30 },
+      "confidence": { "schematic": 0.85, "pcb": 0.8 },
+      "role": "input_bias_to_vref"
+    },
+    {
+      "ref": "C1",
+      "component_type": "capacitor",
+      "value": "1uF",
+      "footprint": "0603",
+      "position": { "x": 5, "y": 30 },
+      "confidence": { "schematic": 0.9, "pcb": 0.85 },
+      "role": "input_ac_coupling"
+    },
+    {
+      "ref": "C2",
+      "component_type": "capacitor",
+      "value": "10uF",
+      "footprint": "0805",
+      "position": { "x": 60, "y": 30 },
+      "confidence": { "schematic": 0.9, "pcb": 0.85 },
+      "role": "output_ac_coupling"
+    },
+    {
+      "ref": "C3",
+      "component_type": "capacitor",
+      "value": "100nF",
+      "footprint": "0402",
+      "position": { "x": 45, "y": 10 },
+      "confidence": { "schematic": 0.95, "pcb": 0.9 },
+      "role": "supply_decoupling"
+    },
+    {
+      "ref": "R4",
+      "component_type": "resistor",
+      "value": "10k",
+      "footprint": "0603",
+      "position": { "x": 15, "y": 10 },
+      "confidence": { "schematic": 0.85, "pcb": 0.8 },
+      "role": "vref_divider_top"
+    },
+    {
+      "ref": "R5",
+      "component_type": "resistor",
+      "value": "10k",
+      "footprint": "0603",
+      "position": { "x": 15, "y": 50 },
+      "confidence": { "schematic": 0.85, "pcb": 0.8 },
+      "role": "vref_divider_bottom"
+    },
+    {
+      "ref": "C4",
+      "component_type": "capacitor",
+      "value": "1uF",
+      "footprint": "0603",
+      "position": { "x": 20, "y": 60 },
+      "confidence": { "schematic": 0.85, "pcb": 0.8 },
+      "role": "vref_bypass"
+    }
+  ],
+
+  "netlist": [
+    {
+      "net_name": "VIN",
+      "net_type": "signal",
+      "connections": [
+        { "ref": "Input_Header", "pin_name": "SIG", "pin_number": 1 },
+        { "ref": "C1", "pin_name": "POSITIVE", "pin_number": 1 }
+      ]
+    },
+    {
+      "net_name": "VIN_COUPLED",
+      "net_type": "signal",
+      "connections": [
+        { "ref": "C1", "pin_name": "NEGATIVE", "pin_number": 2 },
+        { "ref": "R3", "pin_name": "PIN2", "pin_number": 2 },
+        { "ref": "U1", "pin_name": "IN+", "pin_number": 3 }
+      ]
+    },
+    {
+      "net_name": "VREF",
+      "net_type": "reference",
+      "connections": [
+        { "ref": "R4", "pin_name": "PIN2", "pin_number": 2 },
+        { "ref": "R5", "pin_name": "PIN1", "pin_number": 1 },
+        { "ref": "R3", "pin_name": "PIN1", "pin_number": 1 },
+        { "ref": "C4", "pin_name": "POSITIVE", "pin_number": 1 }
+      ]
+    },
+    {
+      "net_name": "FEEDBACK_NODE",
+      "net_type": "signal",
+      "connections": [
+        { "ref": "U1", "pin_name": "IN-", "pin_number": 2 },
+        { "ref": "R1", "pin_name": "PIN2", "pin_number": 2 },
+        { "ref": "R2", "pin_name": "PIN2", "pin_number": 2 }
+      ]
+    },
+    {
+      "net_name": "AMP_OUT",
+      "net_type": "signal",
+      "connections": [
+        { "ref": "U1", "pin_name": "OUT", "pin_number": 1 },
+        { "ref": "R2", "pin_name": "PIN1", "pin_number": 1 },
+        { "ref": "C2", "pin_name": "POSITIVE", "pin_number": 1 }
+      ]
+    },
+    {
+      "net_name": "VOUT",
+      "net_type": "signal",
+      "connections": [
+        { "ref": "C2", "pin_name": "NEGATIVE", "pin_number": 2 },
+        { "ref": "Output_Header", "pin_name": "SIG", "pin_number": 1 }
+      ]
+    },
+    {
+      "net_name": "VCC",
+      "net_type": "power",
+      "connections": [
+        { "ref": "U1", "pin_name": "VCC", "pin_number": 8 },
+        { "ref": "C3", "pin_name": "POSITIVE", "pin_number": 1 },
+        { "ref": "R4", "pin_name": "PIN1", "pin_number": 1 }
+      ]
+    },
+    {
+      "net_name": "GND",
+      "net_type": "ground",
+      "connections": [
+        { "ref": "U1", "pin_name": "GND", "pin_number": 4 },
+        { "ref": "C3", "pin_name": "NEGATIVE", "pin_number": 2 },
+        { "ref": "R1", "pin_name": "PIN1", "pin_number": 1 },
+        { "ref": "R5", "pin_name": "PIN2", "pin_number": 2 },
+        { "ref": "C4", "pin_name": "NEGATIVE", "pin_number": 2 }
+      ]
+    }
+  ],
+
+  "placement_constraints": [
+    {
+      "type": "proximity",
+      "components": ["U1", "C3"],
+      "max_distance_mm": 3,
+      "reason": "supply decoupling cap must be close to op-amp VCC pin"
+    },
+    {
+      "type": "proximity",
+      "components": ["U1", "R1", "R2"],
+      "max_distance_mm": 8,
+      "reason": "keep feedback network short to minimize noise pickup"
+    }
+  ],
+
+  "placement_rules_text": "Keep the feedback network (R1, R2) tight to the op-amp inverting input to minimize stray capacitance and noise pickup. Place the decoupling cap C3 as close as possible to the op-amp supply pin. Keep the input coupling path (C1, R3) away from the output trace (AMP_OUT, C2) to avoid feedback coupling. The Vref divider (R4, R5, C4) can be placed anywhere convenient but should stay on one side to keep its trace short.",
+
+  "test_points": [
+    { "name": "TP_VIN", "net": "VIN", "purpose": "probe input signal" },
+    { "name": "TP_VREF", "net": "VREF", "purpose": "verify bias point at VCC/2" },
+    { "name": "TP_OUT", "net": "AMP_OUT", "purpose": "probe amplifier output before AC coupling" },
+    { "name": "TP_VOUT", "net": "VOUT", "purpose": "probe final AC-coupled output" }
+  ],
+
+  "component_groups": [
+    { "group_name": "gain_network", "members": ["R1", "R2"] },
+    { "group_name": "bias_network", "members": ["R4", "R5", "C4", "R3"] },
+    { "group_name": "io_coupling", "members": ["C1", "C2"] },
+    { "group_name": "power_decoupling", "members": ["C3"] }
+  ],
+
+  "routing_hints": [
+    "Route FEEDBACK_NODE as a short, direct trace with minimal vias.",
+    "Keep GND as a solid pour where possible; avoid splitting the ground plane under U1.",
+    "Route VIN_COUPLED away from VCC and digital traces if any exist on the board.",
+    "AMP_OUT to C2 should be routed before fanning out to any other test/probe point."
+  ],
+
+  "board_spec": {
+    "width": 40,
+    "height": 30,
+    "layers": 2,
+    "thickness": 1.6,
+    "material": "FR4"
+  },
+
+  "performance_specs": {
+    "gain_v_v": 11,
+    "gain_db": 20.8,
+    "bandwidth_hz": 100000,
+    "supply_voltage_v": 5,
+    "input_impedance_ohm": 100000,
+    "output_swing_vpp": 4.5,
+    "target_thd_percent": 0.01
+  },
+
+  "topology_details": {
+    "family": "single_supply_non_inverting_amplifier",
+    "opamp_config": "single_channel",
+    "bias_method": "resistive_divider_to_vref",
+    "coupling": "ac_coupled_input_and_output"
+  },
+
+  "review_flags": [
+    {
+      "severity": "info",
+      "component": "R3",
+      "message": "R3 sets input bias impedance; verify it does not dominate source impedance for the intended signal source."
+    },
+    {
+      "severity": "warning",
+      "component": "U1",
+      "message": "OPA2340 is a dual op-amp package (SOIC-8) but only one channel is used here; confirm the unused half is not left floating if using the real dual-channel part."
+    }
+  ],
+
+  "test_plan": [
+    {
+      "test_id": "TP1_power_up",
+      "name": "Power-up DC bias",
+      "test_point": "VCC (probe at C3 top pad)",
+      "condition": "power applied, no input signal",
+      "expected": { "value": 5.0, "tolerance_pct": 5, "unit": "V" },
+      "rationale": "single-supply op-amp needs a stable rail before any AC test is meaningful",
+      "fail_action": "check supply source and C3 solder joint before proceeding"
+    },
+    {
+      "test_id": "TP2_bias_point",
+      "name": "VREF bias point",
+      "test_point": "TP_VREF",
+      "condition": "power applied, no input signal",
+      "expected": { "value": 2.5, "tolerance_v": 0.1, "unit": "V", "formula": "VCC * R5/(R4+R5)" },
+      "rationale": "sets the DC operating point for the whole amplifier; everything downstream depends on this",
+      "fail_action": "check R4/R5 values and C4 polarity/leakage"
+    },
+    {
+      "test_id": "TP3_output_dc",
+      "name": "Output DC operating point",
+      "test_point": "TP_OUT",
+      "condition": "VIN grounded through R3, no AC signal",
+      "expected": { "value": 2.5, "tolerance_v": 0.2, "unit": "V" },
+      "rationale": "should track VREF; large deviation indicates input offset voltage amplified by gain",
+      "fail_action": "compare U1 Vos_max x gain(11) against observed offset"
+    },
+    {
+      "test_id": "TP4_gain",
+      "name": "Gain verification",
+      "test_point": "TP_VIN to TP_OUT",
+      "condition": "1kHz sine, 100mVpp at TP_VIN",
+      "expected": { "value": 11.0, "tolerance_pct": 5, "unit": "V/V", "formula": "1 + R2/R1" },
+      "rationale": "this is the core spec of the circuit; matches performance_specs.gain_v_v",
+      "fail_action": "verify R1/R2 population and values"
+    },
+    {
+      "test_id": "TP5_bandwidth",
+      "name": "Bandwidth (-3dB point)",
+      "test_point": "TP_VIN to TP_OUT",
+      "condition": "sweep 10Hz to 1MHz, constant amplitude",
+      "expected": { "min_value": 100000, "unit": "Hz", "formula": "GBW / gain" },
+      "rationale": "OPA2340 GBW must exceed target_bw x gain(11) with margin",
+      "fail_action": "if bandwidth is low, gain (R2/R1) is too aggressive for this op-amp"
+    },
+    {
+      "test_id": "TP6_lf_rolloff",
+      "name": "Low-frequency AC-coupling corner",
+      "test_point": "TP_VIN to TP_OUT",
+      "condition": "sweep 1Hz to 1kHz",
+      "expected": { "value": 1.6, "tolerance_pct": 20, "unit": "Hz", "formula": "1/(2*pi*R3*C1)" },
+      "rationale": "confirms input coupling doesn't clip low-frequency content of interest",
+      "fail_action": "adjust C1/R3 if real signal has content below this corner"
+    },
+    {
+      "test_id": "TP7_output_swing",
+      "name": "Output swing / clipping",
+      "test_point": "TP_VOUT",
+      "condition": "increase input amplitude until visible clipping",
+      "expected": { "value": 4.5, "unit": "Vpp", "note": "clips near rails minus op-amp headroom" },
+      "rationale": "at gain 11, even small inputs approach full swing; defines max usable input range",
+      "fail_action": "reduce input amplitude or lower gain if usable range is too narrow"
+    },
+    {
+      "test_id": "TP8_thd",
+      "name": "THD at target output level",
+      "test_point": "TP_VIN to TP_VOUT",
+      "condition": "output driven to ~2Vpp",
+      "expected": { "max_value": 0.01, "unit": "%THD" },
+      "rationale": "matches performance_specs.target_thd_percent at moderate output levels",
+      "fail_action": "check output loading and supply decoupling if THD is high"
+    },
+    {
+      "test_id": "TP9_noise",
+      "name": "Output noise floor",
+      "test_point": "TP_VOUT",
+      "condition": "no input signal, input terminated with expected source impedance",
+      "expected": { "note": "consistent with OPA2340 input noise spec x gain(11) x sqrt(bandwidth)" },
+      "rationale": "elevated noise usually indicates poor decoupling or ground loop issues",
+      "fail_action": "verify C3 placement and grounding per placement_constraints"
+    },
+    {
+      "test_id": "TP10_psrr",
+      "name": "Supply rejection sanity check",
+      "test_point": "TP_VOUT vs injected VCC ripple",
+      "condition": "100mVpp @ 1kHz injected on VCC",
+      "expected": { "note": "attenuated per op-amp PSRR spec; should not feed through directly" },
+      "rationale": "C3 (100nF) should be absorbing high-frequency supply noise",
+      "fail_action": "confirm C3 is within 3mm of U1 VCC pin per placement_constraints"
+    },
+    {
+      "test_id": "TP11_placement_review",
+      "name": "Placement/routing sanity",
+      "test_point": "visual/CAD review",
+      "condition": "post-layout, pre-fab",
+      "expected": { "note": "C3 within 3mm of U1 VCC; R1/R2 loop short; VIN_COUPLED not routed parallel to AMP_OUT" },
+      "rationale": "matches placement_constraints and placement_rules_text",
+      "fail_action": "re-route flagged nets before fabrication"
+    }
+  ]
+}

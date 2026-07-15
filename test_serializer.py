@@ -1,6 +1,6 @@
 """Open_Forge — Python wrapper end-to-end test (Layer 3).
 
-Loads the Libbrecht-Hall NIR fixture, calls `open_forge.serializer.serialize_nir`
+Loads the Libbrecht-Hall NIR fixture, calls `serializer.serialize_nir`
 (Python wrapper around `serializer.ts`), and asserts the returned payload is
 well-formed and contains an SVG.
 
@@ -13,14 +13,17 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
 
-from open_forge import serializer as ser
+# Add parent directory to path so we can import the serializer module
+sys.path.insert(0, str(Path(__file__).parent / "serializer"))
+import serializer as ser
 
 FIXTURE = (
-    Path(__file__).parent / "open_forge" / "fixtures" / "libbrecht-hall.nir.json"
+    Path(__file__).parent / "serializer" / "fixtures" / "libbrecht-hall.nir.json"
 )
 
 

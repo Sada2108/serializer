@@ -7,7 +7,8 @@
 
 import libbrechtHallNirRaw from "./libbrecht-hall.nir.json"
 import instrumentationAmpRaw from "./instrumentation_amp_001.nir.json"
-
+import opampNoninvNirJson from "./opamp_noninv_001.nir.json"
+export const opampNoninvNir = opampNoninvNirJson
 // --------------------------------------------------------------------------- //
 // v0.1 (Libbrecht-Hall) — legacy schema
 // --------------------------------------------------------------------------- //

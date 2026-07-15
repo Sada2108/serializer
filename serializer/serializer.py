@@ -97,7 +97,7 @@ def serialize_nir(nir: dict) -> SerializedNir:
 
     runner, extra_args = _resolve_runner()
     inline = (
-        "import { serializeNir, type Nir } from "
+        "import { serializeNirAsync, type Nir } from "
         f"{json.dumps(bridge)};\n"
         "let stdin='';"
         "process.stdin.setEncoding('utf8');"
@@ -105,7 +105,7 @@ def serialize_nir(nir: dict) -> SerializedNir:
         "process.stdin.on('end', async () => {"
         "  try {"
         "    const nir = JSON.parse(stdin) as Nir;"
-        "    const out = serializeNir(nir);"
+        "    const out = await serializeNirAsync(nir);"
         "    process.stdout.write(JSON.stringify(out));"
         "  } catch (e) {"
         "    process.stderr.write('serializer bridge error: ' + (e && e.stack ? e.stack : String(e)) + '\\n');"
