@@ -92,3 +92,122 @@ python3 -m pytest test_serializer.py -v
 
 Both schemas are supported simultaneously; the serializer auto-detects
 which one it's given.
+
+---
+
+# Layer 4 Simulator
+
+Runs SPICE netlists through ngspice (via subprocess) and returns parsed
+simulation vectors.  Mirrors the serializer's architecture: core TS logic
+(`simulator/simulator.ts`) + Python wrapper (`simulator/simulator.py`).
+
+## Pipeline
+
+```
+SPICE netlist (.cir) → ngspice -b → ASCII .raw → parse → { vectors, metadata }
+```
+
+Or from Circuit JSON:
+```
+Circuit JSON + NIR → netlistFromCircuitJson() → SPICE netlist → ngspice → vectors
+```
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `simulator/simulator.ts` | Core simulator: temp file I/O, ngspice subprocess, .raw parser |
+| `simulator/parseRawFile.ts` | Pure ngspice ASCII .raw parser (unit-testable) |
+| `simulator/netlistFromCircuitJson.ts` | Circuit JSON + NIR → SPICE netlist (value lookup from NIR) |
+| `simulator/simulator.py` | Python wrapper — calls TS via `bun`/`tsx` bridge |
+| `simulator/fixtures/rc_circuit.cir` | Known-good RC netlist with `.tran` |
+| `simulator/fixtures/rc_circuit.expected.json` | Golden vectors for regression |
+| `simulator/fixtures/index.ts` | Typed fixture loader |
+| `simulator.test.ts` | bun test suite (parser, netlist gen, end-to-end) |
+| `test_simulator.py` | pytest suite for Python wrapper |
+
+## System dependency
+
+**ngspice** must be installed and on PATH, or set `NGSPICE_BIN` to the
+binary.
+
+- Linux/macOS: `apt install ngspice` / `brew install ngspice`
+- Windows: Download from https://ngspice.sourceforge.io/download.html
+  - **Critical**: The default `ngspice.exe` on Windows is a GUI wrapper
+    that hangs in batch mode. Use `ngspice_con.exe` (console variant) and
+    set `NGSPICE_BIN=C:\Tools\Spice64\bin\ngspice_con.exe` (or wherever
+    you installed it).
+
+Check version: `ngspice -v` (or `%NGSPICE_BIN% -v`).  The test suite
+records the banner via `getNgspiceVersion()`.
+
+## Usage
+
+**From TypeScript:**
+```ts
+import { simulateNetlist } from "./simulator/simulator"
+import { netlistFromCircuitJson } from "./simulator/netlistFromCircuitJson"
+import { serializeNir } from "./serializer/serializer"
+import { instrumentationAmpNir } from "./serializer/fixtures"
+
+// Option A: direct netlist
+const netlist = `
+* RC filter
+V1 in 0 PULSE(0 1 0 1n 1n 1m 2m)
+R1 in out 1k
+C1 out 0 1u
+.tran 10u 5m
+`
+const result = await simulateNetlist(netlist)
+console.log(result.vectors["v(out)"])
+
+// Option B: NIR -> Circuit JSON -> netlist -> simulate
+const { circuitJson } = serializeNir(instrumentationAmpNir)
+const { netlist } = netlistFromCircuitJson(circuitJson, instrumentationAmpNir)
+const simResult = await simulateNetlist(netlist)
+```
+
+**From Python:**
+```python
+from simulator.simulator import simulate_netlist, netlist_from_circuit_json
+import json
+
+# Direct netlist
+with open("simulator/fixtures/rc_circuit.cir") as f:
+    netlist = f.read()
+
+result = simulate_netlist(netlist)
+print(len(result.vectors["v(out)"]))  # -> 610 points
+```
+
+## Running tests
+
+```bash
+# TypeScript (bun)
+bun test simulator.test.ts
+
+# Python (pytest)
+python -m pytest test_simulator.py -v
+```
+
+### Windows-specific notes
+
+- Set `NGSPICE_BIN` to the console binary:
+  ```powershell
+  $env:NGSPICE_BIN = "C:\Tools\Spice64\bin\ngspice_con.exe"
+  bun test simulator.test.ts
+  ```
+- If you see `ngspice -v produced no output` or tests hang, you're likely
+  hitting the GUI wrapper. Ensure `NGSPICE_BIN` points to `ngspice_con.exe`.
+
+## Known limitations
+
+- Only passive components (R, C, L, D) and independent sources (V, I) are
+  modeled as SPICE primitives.  ICs (opamps, regulators, in-amps, digipots)
+  are emitted as 1-ohm placeholder resistors with a warning — accurate
+  simulation requires subcircuit models (`.subckt`) which are not bundled.
+- No Monte Carlo, no parameter sweeps — single-run transient/DC/AC only.
+- The `.control` block in generated netlists uses a fixed `.tran 1m 10m`;
+  real use-cases should override or post-process the netlist.
+- Complex-valued raw files (AC analysis) are parsed but only the real part
+  is kept — imaginary components are dropped with a warning.

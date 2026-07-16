@@ -1,0 +1,12 @@
+* RC low-pass filter — golden fixture for simulator regression tests
+* 1k resistor, 1uF capacitor, 1V step input, 5ms transient
+V1 in 0 PULSE(0 1 0 1n 1n 1m 2m)
+R1 in out 1k
+C1 out 0 1u
+.tran 10u 5m
+.control
+run
+set filetype=ascii
+write output.raw
+.endc
+.END
