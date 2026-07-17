@@ -42,6 +42,7 @@ import type {
   NirV11PlacementConstraint,
   NirV11,
 } from "./fixtures"
+import { circuitJsonToKicadPcb } from "./kicadPcbWriter"
 
 // --------------------------------------------------------------------------- //
 // Types
@@ -58,6 +59,8 @@ export interface SerializerOutput {
   svg: string
   /** Which renderer produced `svg`.  `null` means render was skipped. */
   viewerUsed: ViewerUsed | null
+  /** KiCad .kicad_pcb S-expression text (async path only). */
+  kicadPcb?: string
 }
 
 export type NirSchemaVersion = "v0.1-libbrecht" | "v1.1-instrumentation"
@@ -208,7 +211,7 @@ function parseNirV11Sync(nir: NirV11): AnyCircuitElement[] {
 // --------------------------------------------------------------------------- //
 
 // Footprint mapping: fixture names -> KiCad footprint strings from tscircuit (with kicad: prefix)
-const FOOTPRINT_MAP: Record<string, string> = {
+export const FOOTPRINT_MAP: Record<string, string> = {
   "MSOP-8":     "kicad:Package_SO/MSOP-8-1EP_3x3mm_P0.65mm_EP1.5x1.8mm",
   "SOT-23-5":   "kicad:Package_TO_SOT_SMD/SOT-23-5",
   "TSOT-23-5":  "kicad:Package_TO_SOT_SMD/TSOT-23-5",
@@ -220,7 +223,7 @@ const FOOTPRINT_MAP: Record<string, string> = {
   "SOT-23":     "kicad:Package_TO_SOT_SMD/SOT-23-5",      // TVS diode array likely 5-pin
 }
 
-function kicadFootprint(fixtureName: string): string {
+export function kicadFootprint(fixtureName: string): string {
   return FOOTPRINT_MAP[fixtureName] ?? fixtureName
 }
 
@@ -894,7 +897,9 @@ export function serializeNir(nir: Nir | unknown): SerializerOutput {
 export async function serializeNirAsync(nir: Nir | unknown): Promise<SerializerOutput> {
   const circuitJson = await nirToCircuitJsonAsync(nir)
   const { svg, viewerUsed } = renderCircuitJson(circuitJson)
-  return { circuitJson, svg, viewerUsed }
+  const hasPcbBoard = circuitJson.some((e: any) => e.type === "pcb_board")
+  const kicadPcb = hasPcbBoard ? circuitJsonToKicadPcb(circuitJson) : undefined
+  return { circuitJson, svg, viewerUsed, kicadPcb }
 }
 
 export { serializeNir as serializeNirSync }
