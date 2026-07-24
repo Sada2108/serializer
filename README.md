@@ -95,7 +95,7 @@ which one it's given.
 
 ---
 
-# Layer 4 Simulator
+# Simulator
 
 Runs SPICE netlists through ngspice (via subprocess) and returns parsed
 simulation vectors.  Mirrors the serializer's architecture: core TS logic
