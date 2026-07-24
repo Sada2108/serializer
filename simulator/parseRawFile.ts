@@ -43,6 +43,7 @@ export interface RawVariable {
 export interface ParseRawResult {
   variables: RawVariable[]
   vectors: Record<string, number[]>
+  complexVectors?: Record<string, number[]>
   numPoints: number
   plotname: string | null
 }
@@ -140,7 +141,12 @@ export function parseRawFile(rawText: string): ParseRawResult {
   }
   // Pre-allocate numeric arrays for each variable.
   const vectors: Record<string, number[]> = {}
-  for (const v of variables) vectors[v.name] = new Array<number>(numPoints)
+  const complexVectors: Record<string, number[]> = {}
+  const isComplex = flags !== null && /complex/i.test(flags)
+  for (const v of variables) {
+    vectors[v.name] = new Array<number>(numPoints)
+    if (isComplex) complexVectors[v.name] = new Array<number>(numPoints)
+  }
 
   // Walk the values body.  ngspice's ASCII .raw layout (verified against
   // ngspice-46) is:
@@ -189,21 +195,21 @@ export function parseRawFile(rawText: string): ParseRawResult {
       const t = tok.trim()
       if (t.length === 0) continue
       // Complex-valued raw files (Flags: complex) write each value as
-      // "<real>,<imag>" on a single token.  We take the real part only
-      // and warn — the simulator pipeline is real-valued, so dropping
-      // imaginary parts is the documented behaviour.  This avoids a
-      // silent zero-out.
+      // "<real>,<imag>" on a single token.  We keep both parts.
       let n: number
-      if (flags !== null && /complex/i.test(flags) && t.includes(",")) {
-        const real = t.split(",")[0]
-        const parsed = Number(real)
-        if (!Number.isFinite(parsed)) {
+      if (isComplex && t.includes(",")) {
+        const parts = t.split(",")
+        const real = Number(parts[0])
+        const imag = Number(parts[1])
+        if (!Number.isFinite(real) || !Number.isFinite(imag)) {
           throw new Error(
             "parseRawFile: non-numeric complex value in 'Values:' body at " +
             "line " + (i + 1) + ": " + JSON.stringify(t),
           )
         }
-        n = parsed
+        n = real
+        const v = variables[field]
+        if (v) complexVectors[v.name][point] = imag
       } else {
         n = Number(t)
         if (!Number.isFinite(n)) {
@@ -246,6 +252,7 @@ export function parseRawFile(rawText: string): ParseRawResult {
   return {
     variables,
     vectors,
+    complexVectors: isComplex ? complexVectors : undefined,
     numPoints,
     plotname,
   }

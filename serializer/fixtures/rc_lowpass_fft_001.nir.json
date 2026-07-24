@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.1",
+  "design_id": "rc_lowpass_fft_001",
+  "prompt": "RC low-pass filter FFT: 1kHz sine input, R=1k, C=1uF, shows harmonic attenuation.",
+  "design_methodology": {
+    "created_at": "2026-07-19T00:00:00Z",
+    "pipeline_version": "v1.1.0",
+    "topology": "rc_lowpass_fft"
+  },
+  "components": [
+    {
+      "ref": "V1",
+      "component_type": "voltage_source",
+      "value": "5",
+      "footprint": "0603",
+      "position": { "x": 10, "y": 25 },
+      "confidence": { "schematic": 1.0, "pcb": 0.9 }
+    },
+    {
+      "ref": "R1",
+      "component_type": "resistor",
+      "value": "1k",
+      "footprint": "0603",
+      "position": { "x": 25, "y": 25 },
+      "confidence": { "schematic": 1.0, "pcb": 0.9 }
+    },
+    {
+      "ref": "C1",
+      "component_type": "capacitor",
+      "value": "1u",
+      "footprint": "0603",
+      "position": { "x": 40, "y": 25 },
+      "confidence": { "schematic": 1.0, "pcb": 0.9 }
+    }
+  ],
+  "netlist": [
+    {
+      "net_name": "VIN",
+      "net_type": "power",
+      "connections": [
+        { "ref": "V1", "pin_name": "POS", "pin_number": 1 },
+        { "ref": "R1", "pin_name": "1", "pin_number": 1 }
+      ]
+    },
+    {
+      "net_name": "VOUT",
+      "net_type": "signal",
+      "connections": [
+        { "ref": "R1", "pin_name": "2", "pin_number": 2 },
+        { "ref": "C1", "pin_name": "1", "pin_number": 1 }
+      ]
+    },
+    {
+      "net_name": "GND",
+      "net_type": "ground",
+      "connections": [
+        { "ref": "V1", "pin_name": "NEG", "pin_number": 2 },
+        { "ref": "C1", "pin_name": "2", "pin_number": 2 }
+      ]
+    }
+  ],
+  "board_spec": {
+    "width": 30,
+    "height": 20,
+    "layers": 2,
+    "thickness": 1.6,
+    "material": "FR4"
+  }
+}

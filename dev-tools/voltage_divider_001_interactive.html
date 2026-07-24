@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SPICE Simulator — voltage_divider_001</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { margin:0; padding:0; background:#f4f4f4; color:#222; }
+  .toolbar { background:#1f1f1f; color:#ddd; padding:6px 10px; display:flex; gap:14px; align-items:center; font-size:12px; }
+  .toolbar label { display:flex; align-items:center; gap:4px; cursor:pointer; }
+  .toolbar select, .toolbar button { background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; padding:4px 6px; font-size:12px; border-radius:3px; }
+  .toolbar button { cursor:pointer; }
+  .toolbar input[type="number"] { width:46px; padding:2px 4px; font-size:12px; background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; border-radius:3px; }
+  .toolbar .sep { width:1px; height:18px; background:#444; }
+  .layout { display:flex; flex-direction:column; height:calc(100vh - 32px); }
+  .middle { display:flex; flex:1; min-height:0; }
+  .chart-wrap { flex:1; min-width:0; background:#fff; position:relative; border:1px solid #ddd; border-radius:3px; margin:6px; overflow:hidden; }
+  .right { width:340px; min-width:340px; max-width:340px; background:#fff; border:1px solid #ddd; border-radius:3px; margin:6px 6px 6px 0; overflow:auto; }
+  .right h3 { margin:0; padding:6px 10px; font-size:12px; color:#666; border-bottom:1px solid #ddd; background:#fafafa; text-transform:uppercase; letter-spacing:.5px; }
+  .signal-list table { border-collapse:collapse; width:100%; font-size:12px; }
+  .signal-list th { background:#f7f7f7; padding:4px 6px; text-align:left; font-weight:600; color:#555; border-bottom:1px solid #ddd; position:sticky; top:0; }
+  .signal-list td { padding:3px 6px; border-bottom:1px solid #f2f2f2; font-family:ui-monospace, Menlo, Consolas, monospace; }
+  .signal-list td.color-cell { width:18px; padding:3px 4px; }
+  .signal-list .swatch { display:inline-block; width:12px; height:12px; border-radius:2px; vertical-align:middle; }
+  .signal-list input[type="checkbox"] { margin:0; cursor:pointer; }
+  .netlist-panel { border-top:1px solid #ddd; }
+  .netlist-panel pre { margin:0; padding:8px 10px; font-size:11px; line-height:1.5; overflow:auto; max-height:300px; background:#fafafa; color:#333; white-space:pre-wrap; word-break:break-all; }
+  .netlist-toggle { padding:4px 8px; font-size:12px; cursor:pointer; background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; border-radius:3px; margin:6px; }
+  .warn-banner { background:#fff3cd; color:#856404; padding:8px 12px; font-size:12px; border-bottom:1px solid #ffc107; }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <label>Analysis:
+      <select id="analysisType" onchange="switchAnalysis()">
+        <option value="tran" selected>Transient (TRAN)</option>
+        <option value="op" disabled>Operating Point (OP)</option>
+        <option value="dc" disabled>DC Sweep (DC)</option>
+        <option value="ac" disabled>AC Analysis (AC)</option>
+        <option value="pz" disabled>Pole-Zero (PZ)</option>
+        <option value="noise" disabled>Noise (NOISE)</option>
+        <option value="sp" disabled>S-Parameter (SP)</option>
+        <option value="fft" disabled>FFT</option>
+      </select>
+    </label>
+    <div class="sep"></div>
+    <label>Start (ms):
+      <input type="number" id="tStartInput" value="0.000" step="0.01">
+    </label>
+    <label>End (ms):
+      <input type="number" id="tEndInput" value="10.000" step="0.01">
+    </label>
+    <button onclick="applyTimeRange()">Apply</button>
+    <div class="sep"></div>
+    <label><input type="checkbox" id="showGrid" checked onchange="toggleGrid()"> Grid</label>
+    <label><input type="checkbox" id="showLegend" checked onchange="toggleLegend()"> Legend</label>
+    <div class="sep"></div>
+    <span style="color:#999">Fixture: voltage_divider_001</span>
+  </div>
+
+  
+
+  <div class="layout">
+    <div class="middle">
+      <div class="chart-wrap" id="chart"></div>
+      <div class="right">
+        <h3>Signals</h3>
+        <div class="signal-list">
+          <table>
+            <thead><tr><th></th><th>Signal</th><th>Type</th><th>Max</th><th>Min</th></tr></thead>
+            <tbody id="signalTableBody"></tbody>
+          </table>
+        </div>
+        <div class="netlist-panel">
+          <button class="netlist-toggle" onclick="toggleNetlist()">Show / Hide Netlist</button>
+          <pre id="netlistPre" style="display:none">* Open_Forge generated netlist (from Circuit JSON + NIR)
+
+V1 1 0 PULSE(0 5 0 1n 1n 10m 20m)
+R1 1 2 10k
+R2 2 0 10k
+
+* --- Simulation commands (user should customize) ---
+.tran 1m 10m
+.end</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  var probes = [{"name":"v(1)","color":"#1f77b4","values":[0,0.05,0.1,0.2,0.4,0.8,1.6,3.2,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],"type":"voltage"},{"name":"v(2)","color":"#d62728","values":[0,0.025,0.05,0.1,0.2,0.4,0.8,1.6,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5,2.5],"type":"voltage"},{"name":"i(v1)","color":"#2ca02c","values":[0,-0.0000025,-0.000005,-0.00001,-0.00002,-0.00004,-0.00008,-0.00016,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025,-0.00025],"type":"current"}];
+
+  var PALETTE = [
+    "#1f77b4","#d62728","#2ca02c","#ff7f0e","#9467bd",
+    "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf",
+    "#393b79","#637939","#8c6d31","#843c39","#7b4178",
+    "#3182bd","#31a354","#756bb1","#636363","#d6616b",
+  ];
+
+  var timeData = [0,1e-11,2e-11,4e-11,8.000000000000001e-11,1.6e-10,3.2e-10,6.400000000000001e-10,1e-9,1.064e-9,1.192e-9,1.448e-9,1.96e-9,2.984e-9,5.032e-9,9.128e-9,1.732e-8,3.370400000000001e-8,6.647200000000001e-8,1.32008e-7,2.630800000000001e-7,5.252240000000001e-7,0.000001049512,0.000002098088,0.000004195240000000001,0.000008389544000000002,0.000016778152,0.00003355536800000001,0.00006710980000000001,0.000134218664,0.000268436392,0.0004684363920000001,0.0006684363920000001,0.000868436392,0.001068436392,0.001268436392,0.001468436392,0.001668436392,0.001868436392,0.002068436392,0.002268436392000001,0.002468436392000001,0.002668436392000001,0.002868436392000001,0.003068436392000001,0.003268436392000001,0.003468436392000001,0.003668436392000001,0.003868436392000001,0.004068436392000001,0.004268436392000001,0.004468436392,0.004668436392,0.004868436392,0.005068436391999999,0.005268436391999999,0.005468436391999999,0.005668436391999998,0.005868436391999998,0.006068436391999998,0.006268436391999997,0.006468436391999997,0.006668436391999997,0.006868436391999996,0.007068436391999996,0.007268436391999995,0.007468436391999995,0.007668436391999995,0.007868436391999994,0.008068436391999995,0.008268436391999995,0.008468436391999996,0.008668436391999997,0.008868436391999997,0.009068436391999998,0.009268436391999998,0.009468436391999999,0.009668436392,0.009834218196,0.01];
+  var timeMs = timeData.map(function(t) { return t * 1000; });
+
+  var allTraces = [];
+  var visible = [];
+
+  probes.forEach(function(p, idx) {
+    var trace = {
+      x: timeMs,
+      y: p.values,
+      name: p.name,
+      type: "scatter",
+      mode: "lines",
+      line: { color: p.color, width: 1.5 },
+      visible: true,
+    };
+    allTraces.push(trace);
+    visible.push(true);
+  });
+
+  var layout = {
+    margin: { l: 60, r: 20, t: 30, b: 50 },
+    xaxis: {
+      title: "Time (ms)",
+      gridcolor: "#e0e0e0",
+      zeroline: true,
+      zerolinecolor: "#bbb",
+    },
+    yaxis: {
+      title: "Voltage (V)",
+      gridcolor: "#e0e0e0",
+      zeroline: true,
+      zerolinecolor: "#bbb",
+    },
+    legend: { orientation: "h", y: -0.15 },
+    hovermode: "x unified",
+    paper_bgcolor: "#fff",
+    plot_bgcolor: "#fff",
+  };
+
+  var config = {
+    responsive: true,
+    displayModeBar: true,
+    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+    displaylogo: false,
+  };
+
+  Plotly.newPlot("chart", allTraces, layout, config);
+
+  // Signal table
+  var tbody = document.getElementById("signalTableBody");
+  probes.forEach(function(p, idx) {
+    var vals = p.values;
+    var max = -Infinity, min = Infinity;
+    for (var i = 0; i < vals.length; i++) {
+      if (vals[i] > max) max = vals[i];
+      if (vals[i] < min) min = vals[i];
+    }
+    if (!isFinite(max)) max = 0;
+    if (!isFinite(min)) min = 0;
+
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="color-cell"><span class="swatch" style="background:' + p.color + '"></span></td>' +
+      '<td><label><input type="checkbox" data-idx="' + idx + '" checked onchange="toggleTrace(this)"> ' + p.name + '</label></td>' +
+      '<td>' + p.type + '</td>' +
+      '<td>' + max.toFixed(3) + '</td>' +
+      '<td>' + min.toFixed(3) + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  window.toggleTrace = function(cb) {
+    var idx = parseInt(cb.getAttribute("data-idx"));
+    visible[idx] = cb.checked;
+    var vis = visible.map(function(v) { return v ? true : "legendonly"; });
+    Plotly.restyle("chart", { visible: vis });
+  };
+
+  window.applyTimeRange = function() {
+    var tStart = parseFloat(document.getElementById("tStartInput").value);
+    var tEnd = parseFloat(document.getElementById("tEndInput").value);
+    if (isNaN(tStart) || isNaN(tEnd) || tStart >= tEnd) return;
+    Plotly.relayout("chart", {
+      "xaxis.range": [tStart, tEnd],
+    });
+  };
+
+  window.toggleGrid = function() {
+    var show = document.getElementById("showGrid").checked;
+    var gc = show ? "#e0e0e0" : "transparent";
+    Plotly.relayout("chart", {
+      "xaxis.gridcolor": gc,
+      "yaxis.gridcolor": gc,
+    });
+  };
+
+  window.toggleLegend = function() {
+    var show = document.getElementById("showLegend").checked;
+    Plotly.relayout("chart", {
+      "showlegend": show,
+    });
+  };
+
+  window.toggleNetlist = function() {
+    var pre = document.getElementById("netlistPre");
+    pre.style.display = pre.style.display === "none" ? "block" : "none";
+  };
+
+  window.switchAnalysis = function() {
+    var sel = document.getElementById("analysisType");
+    if (sel.value !== "tran") {
+      alert("Only Transient (TRAN) analysis is currently supported.");
+      sel.value = "tran";
+    }
+  };
+})();
+</script>
+</body>
+</html>

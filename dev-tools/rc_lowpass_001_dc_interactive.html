@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SPICE Simulator — rc_lowpass_001</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { margin:0; padding:0; background:#f4f4f4; color:#222; }
+  .toolbar { background:#1f1f1f; color:#ddd; padding:6px 10px; display:flex; gap:14px; align-items:center; font-size:12px; }
+  .toolbar label { display:flex; align-items:center; gap:4px; cursor:pointer; }
+  .toolbar select, .toolbar button { background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; padding:4px 6px; font-size:12px; border-radius:3px; }
+  .toolbar button { cursor:pointer; }
+  .toolbar input[type="number"] { width:46px; padding:2px 4px; font-size:12px; background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; border-radius:3px; }
+  .toolbar .sep { width:1px; height:18px; background:#444; }
+  .layout { display:flex; flex-direction:column; height:calc(100vh - 32px); }
+  .middle { display:flex; flex:1; min-height:0; }
+  .chart-wrap { flex:1; min-width:0; background:#fff; position:relative; border:1px solid #ddd; border-radius:3px; margin:6px; overflow:hidden; }
+  .right { width:340px; min-width:340px; max-width:340px; background:#fff; border:1px solid #ddd; border-radius:3px; margin:6px 6px 6px 0; overflow:auto; }
+  .right h3 { margin:0; padding:6px 10px; font-size:12px; color:#666; border-bottom:1px solid #ddd; background:#fafafa; text-transform:uppercase; letter-spacing:.5px; }
+  .signal-list table { border-collapse:collapse; width:100%; font-size:12px; }
+  .signal-list th { background:#f7f7f7; padding:4px 6px; text-align:left; font-weight:600; color:#555; border-bottom:1px solid #ddd; position:sticky; top:0; }
+  .signal-list td { padding:3px 6px; border-bottom:1px solid #f2f2f2; font-family:ui-monospace, Menlo, Consolas, monospace; }
+  .signal-list td.color-cell { width:18px; padding:3px 4px; }
+  .signal-list .swatch { display:inline-block; width:12px; height:12px; border-radius:2px; vertical-align:middle; }
+  .signal-list input[type="checkbox"] { margin:0; cursor:pointer; }
+  .netlist-panel { border-top:1px solid #ddd; }
+  .netlist-panel pre { margin:0; padding:8px 10px; font-size:11px; line-height:1.5; overflow:auto; max-height:300px; background:#fafafa; color:#333; white-space:pre-wrap; word-break:break-all; }
+  .netlist-toggle { padding:4px 8px; font-size:12px; cursor:pointer; background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; border-radius:3px; margin:6px; }
+  .warn-banner { background:#fff3cd; color:#856404; padding:8px 12px; font-size:12px; border-bottom:1px solid #ffc107; }
+  .slider-panel { border-bottom:1px solid #ddd; background:#fafafa; padding:8px 12px; display:none; }
+  .slider-panel.visible { display:block; }
+  .slider-panel h3 { margin:0 0 6px; font-size:11px; color:#666; text-transform:uppercase; letter-spacing:.5px; }
+  .slider-row { display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:12px; }
+  .slider-row label { min-width:40px; font-weight:600; color:#333; }
+  .slider-row input[type="range"] { flex:1; height:4px; }
+  .slider-row .val { min-width:80px; text-align:right; font-family:ui-monospace,Menlo,Consolas,monospace; color:#555; font-size:11px; }
+  .slider-row .unit { color:#999; font-size:11px; }
+  .slider-panel .server-note { font-size:10px; color:#999; margin-top:4px; }
+  .slider-panel .server-note.error { color:#c00; }
+  .slider-loading { display:inline-block; width:10px; height:10px; border:2px solid #ccc; border-top-color:#333; border-radius:50%; animation:spin .6s linear infinite; margin-left:6px; vertical-align:middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <a id="backToSchematic" href="rc_lowpass_001_schematic.html" style="color:#4fc3f7;text-decoration:none;font-weight:600;margin-right:8px" title="Back to Schematic Editor">\u2190 Schematic</a>
+    <div class="sep"></div>
+    <label>Analysis:
+      <select id="analysisType" onchange="switchAnalysis()">
+        <option value="tran" >Transient (TRAN)</option>
+        <option value="op" >Operating Point (OP)</option>
+        <option value="dc" selected>DC Sweep (DC)</option>
+        <option value="ac" >AC Analysis (AC)</option>
+        <option value="pz" disabled>Pole-Zero (PZ)</option>
+        <option value="noise" disabled>Noise (NOISE)</option>
+        <option value="sp" disabled>S-Parameter (SP)</option>
+        <option value="fft" >FFT (Fourier)</option>
+      </select>
+    </label>
+    <div class="sep"></div>
+    <label>Start:
+      <input type="number" id="tStartInput" value="0.000" step="0.01">
+    </label>
+    <label>End:
+      <input type="number" id="tEndInput" value="10000.000" step="0.01">
+    </label>
+    <button onclick="applyTimeRange()">Apply</button>
+    <div class="sep"></div>
+    <label><input type="checkbox" id="showGrid" checked onchange="toggleGrid()"> Grid</label>
+    <label><input type="checkbox" id="showLegend" checked onchange="toggleLegend()"> Legend</label>
+    <div class="sep"></div>
+    <span style="color:#999">Fixture: rc_lowpass_001</span>
+  </div>
+
+  
+
+  <div class="slider-panel" id="sliderPanel">
+    <h3>Component Values <span id="sliderLoading"></span></h3>
+    <div id="sliderContainer"></div>
+    <div class="server-note" id="serverNote">Requires <code>sim_server.ts</code> running locally (<code>bun run sim_server.ts</code>)</div>
+  </div>
+
+  <div class="layout">
+    <div class="middle">
+      <div class="chart-wrap" id="chart"></div>
+      <div class="right">
+        <h3>Signals</h3>
+        <div class="signal-list">
+          <table>
+            <thead><tr><th></th><th>Signal</th><th>Type</th><th>Max</th><th>Min</th></tr></thead>
+            <tbody id="signalTableBody"></tbody>
+          </table>
+        </div>
+        <div class="netlist-panel">
+          <button class="netlist-toggle" onclick="toggleNetlist()">Show / Hide Netlist</button>
+          <pre id="netlistPre" style="display:none">* Open_Forge generated netlist (from Circuit JSON + NIR)
+
+V1 1 0 DC 5
+R1 1 2 1k
+C1 2 0 1u
+
+* --- Simulation commands ---
+.dc V1 0 10 0.1
+.end</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  var probes = [{"name":"v(v-sweep)","color":"#1f77b4","values":[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.7999999999999999,0.8999999999999999,0.9999999999999999,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.900000000000001,2,2.100000000000001,2.200000000000001,2.300000000000001,2.400000000000001,2.500000000000001,2.600000000000001,2.700000000000001,2.800000000000001,2.900000000000001,3.000000000000001,3.100000000000001,3.200000000000002,3.300000000000002,3.400000000000002,3.500000000000002,3.600000000000002,3.700000000000002,3.800000000000002,3.900000000000002,4.000000000000002,4.100000000000001,4.200000000000001,4.300000000000001,4.4,4.5,4.6,4.699999999999999,4.799999999999999,4.899999999999999,4.999999999999998,5.099999999999998,5.199999999999998,5.299999999999997,5.399999999999997,5.499999999999996,5.599999999999996,5.699999999999996,5.799999999999995,5.899999999999995,5.999999999999995,6.099999999999994,6.199999999999994,6.299999999999994,6.399999999999993,6.499999999999993,6.599999999999993,6.699999999999992,6.799999999999992,6.899999999999991,6.999999999999991,7.099999999999991,7.19999999999999,7.29999999999999,7.39999999999999,7.499999999999989,7.599999999999989,7.699999999999989,7.799999999999988,7.899999999999988,7.999999999999988,8.099999999999987,8.199999999999987,8.299999999999986,8.399999999999986,8.499999999999986,8.599999999999985,8.699999999999985,8.799999999999985,8.899999999999984,8.999999999999984,9.099999999999984,9.199999999999983,9.299999999999983,9.399999999999983,9.499999999999982,9.599999999999982,9.699999999999982,9.799999999999981,9.89999999999998,9.99999999999998],"type":"voltage"},{"name":"v(1)","color":"#d62728","values":[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.7999999999999999,0.8999999999999999,0.9999999999999999,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.900000000000001,2,2.100000000000001,2.200000000000001,2.300000000000001,2.400000000000001,2.500000000000001,2.600000000000001,2.700000000000001,2.800000000000001,2.900000000000001,3.000000000000001,3.100000000000001,3.200000000000002,3.300000000000002,3.400000000000002,3.500000000000002,3.600000000000002,3.700000000000002,3.800000000000002,3.900000000000002,4.000000000000002,4.100000000000001,4.200000000000001,4.300000000000001,4.4,4.5,4.6,4.699999999999999,4.799999999999999,4.899999999999999,4.999999999999998,5.099999999999998,5.199999999999998,5.299999999999997,5.399999999999997,5.499999999999996,5.599999999999996,5.699999999999996,5.799999999999995,5.899999999999995,5.999999999999995,6.099999999999994,6.199999999999994,6.299999999999994,6.399999999999993,6.499999999999993,6.599999999999993,6.699999999999992,6.799999999999992,6.899999999999991,6.999999999999991,7.099999999999991,7.19999999999999,7.29999999999999,7.39999999999999,7.499999999999989,7.599999999999989,7.699999999999989,7.799999999999988,7.899999999999988,7.999999999999988,8.099999999999987,8.199999999999987,8.299999999999986,8.399999999999986,8.499999999999986,8.599999999999985,8.699999999999985,8.799999999999985,8.899999999999984,8.999999999999984,9.099999999999984,9.199999999999983,9.299999999999983,9.399999999999983,9.499999999999982,9.599999999999982,9.699999999999982,9.799999999999981,9.89999999999998,9.99999999999998],"type":"voltage"},{"name":"v(2)","color":"#2ca02c","values":[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.7999999999999999,0.9,0.9999999999999998,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.800000000000001,1.900000000000001,2,2.100000000000001,2.200000000000001,2.300000000000001,2.400000000000001,2.500000000000001,2.600000000000001,2.700000000000001,2.800000000000001,2.900000000000001,3.000000000000001,3.100000000000001,3.200000000000002,3.300000000000002,3.400000000000002,3.500000000000002,3.600000000000002,3.700000000000002,3.800000000000002,3.900000000000003,4.000000000000002,4.100000000000001,4.200000000000001,4.300000000000001,4.4,4.500000000000001,4.6,4.699999999999999,4.799999999999999,4.899999999999999,4.999999999999998,5.099999999999998,5.199999999999998,5.299999999999997,5.399999999999997,5.499999999999996,5.599999999999996,5.699999999999996,5.799999999999995,5.899999999999996,5.999999999999995,6.099999999999994,6.199999999999994,6.299999999999994,6.399999999999993,6.499999999999993,6.599999999999993,6.699999999999992,6.799999999999992,6.899999999999991,6.999999999999991,7.099999999999991,7.19999999999999,7.299999999999991,7.39999999999999,7.499999999999989,7.59999999999999,7.699999999999989,7.799999999999988,7.899999999999989,7.999999999999988,8.099999999999987,8.199999999999987,8.299999999999986,8.399999999999986,8.499999999999988,8.599999999999985,8.699999999999985,8.799999999999985,8.899999999999984,8.999999999999984,9.099999999999984,9.199999999999985,9.299999999999983,9.399999999999983,9.499999999999982,9.599999999999982,9.699999999999982,9.799999999999981,9.899999999999983,9.99999999999998],"type":"voltage"},{"name":"i(v1)","color":"#ff7f0e","values":[0,2.840609691912022e-21,5.681219383824043e-21,2.272487753529617e-20,1.136243876764809e-20,0,4.284766985662713e-20,-2.272487753529617e-20,2.012279232133096e-20,6.557254739192331e-20,-5.204170427930426e-21,4.024558464266192e-20,8.569533971325427e-20,1.36349265211777e-19,-4.024558464266192e-20,5.204170427930426e-21,5.065392549852277e-20,9.610368056911512e-20,1.467576060676379e-19,-2.983724378680107e-20,1.040834085586085e-20,-1.609823385706477e-19,1.013078509970455e-19,-7.008282842946299e-20,1.922073611382302e-19,2.08166817117217e-20,-1.505739977147868e-19,1.117161918529064e-19,-5.967448757360214e-20,2.026157019940911e-19,3.122502256758256e-20,-1.40165656858926e-19,1.221245327087673e-19,-4.926614671774129e-20,2.130240428499519e-19,4.163336342344341e-20,-1.297573160030651e-19,1.325328735646281e-19,-3.885780586188044e-20,2.338407245616736e-19,4.163336342344341e-20,2.935152121352758e-19,-3.219646771412954e-19,-7.008282842946299e-20,1.817990202823694e-19,4.544975507059235e-19,-1.817990202823694e-19,7.008282842946299e-20,3.219646771412954e-19,-2.935152121352758e-19,-4.163336342344341e-20,2.10248485288389e-19,4.829470157119431e-19,-1.533495552763498e-19,9.853229343548258e-20,3.50414142147315e-19,-2.650657471292562e-19,-1.318389841742382e-20,2.386979502944086e-19,5.113964807179626e-19,-1.249000902703302e-19,1.269817584415022e-19,3.788636071533345e-19,-2.366162821232366e-19,1.526556658859576e-20,2.671474153004281e-19,5.398459457239822e-19,-9.645062526431064e-20,1.554312234475217e-19,4.073130721593541e-19,-2.08166817117217e-19,4.371503159461535e-20,2.955968803064477e-19,5.682954107300018e-19,-6.800116025829105e-20,1.838806884535413e-19,4.565792188770954e-19,-1.797173521111975e-19,7.216449660063493e-20,3.44863027024189e-19,5.967448757360214e-19,-3.955169525227147e-20,2.123301534595609e-19,4.642120021713933e-19,7.160938508832257e-19,1.009609063018501e-18,-5.148659276699166e-19,-2.629840789580843e-19,-1.110223024625188e-20,2.407796184655805e-19,4.926614671774129e-19,7.445433158892453e-19,1.038058528024521e-18,-4.864164626638971e-19,-2.345346139520647e-19,1.73472347597677e-20,2.692290834716001e-19,5.211109321834325e-19,7.729927808952648e-19,1.066507993030541e-18,-4.579669976578775e-19],"type":"current"}];
+
+  var PALETTE = [
+    "#1f77b4","#d62728","#2ca02c","#ff7f0e","#9467bd",
+    "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf",
+    "#393b79","#637939","#8c6d31","#843c39","#7b4178",
+    "#3182bd","#31a354","#756bb1","#636363","#d6616b",
+  ];
+
+  var timeData = [0,100,200,300,400,500,600,700,799.9999999999999,899.9999999999999,999.9999999999999,1100,1200,1300,1400,1500,1600,1700,1800,1900.000000000001,2000,2100.000000000001,2200.000000000001,2300.0000000000014,2400.000000000001,2500.000000000001,2600.000000000001,2700.000000000001,2800.0000000000014,2900.000000000001,3000.000000000001,3100.000000000001,3200.000000000002,3300.000000000002,3400.0000000000023,3500.0000000000023,3600.000000000002,3700.000000000002,3800.000000000002,3900.0000000000023,4000.000000000002,4100.000000000002,4200.000000000001,4300.000000000001,4400,4500,4600,4699.999999999999,4799.999999999999,4899.999999999998,4999.999999999998,5099.999999999998,5199.999999999998,5299.999999999997,5399.999999999996,5499.999999999995,5599.999999999996,5699.999999999995,5799.999999999995,5899.999999999995,5999.9999999999945,6099.9999999999945,6199.999999999994,6299.999999999994,6399.999999999994,6499.999999999993,6599.999999999994,6699.999999999992,6799.999999999992,6899.999999999991,6999.999999999991,7099.999999999991,7199.99999999999,7299.99999999999,7399.99999999999,7499.999999999989,7599.999999999989,7699.999999999989,7799.999999999988,7899.999999999988,7999.999999999987,8099.999999999987,8199.999999999987,8299.999999999987,8399.999999999985,8499.999999999985,8599.999999999985,8699.999999999985,8799.999999999985,8899.999999999984,8999.999999999984,9099.999999999984,9199.999999999984,9299.999999999984,9399.999999999982,9499.999999999982,9599.999999999982,9699.999999999982,9799.999999999982,9899.99999999998,9999.99999999998];
+  var xLabel = "v(v-sweep) (V)";
+  var timeMs = timeData;
+
+  var allTraces = [];
+  var visible = [];
+
+  probes.forEach(function(p, idx) {
+    var trace = {
+      x: timeMs,
+      y: p.values,
+      name: p.name,
+      type: "scatter",
+      mode: "lines",
+      line: { color: p.color, width: 1.5 },
+      visible: true,
+    };
+    allTraces.push(trace);
+    visible.push(true);
+  });
+
+  var isAc = timeData.length > 0 && xLabel.indexOf("Frequency") >= 0;
+  var layout = {
+    margin: { l: 60, r: 20, t: 30, b: 50 },
+    xaxis: {
+      title: xLabel,
+      gridcolor: "#e0e0e0",
+      zeroline: true,
+      zerolinecolor: "#bbb",
+      type: isAc ? "log" : "linear",
+    },
+    yaxis: {
+      title: isAc ? "Magnitude (dB) / Phase (deg)" : "Voltage (V)",
+      gridcolor: "#e0e0e0",
+      zeroline: true,
+      zerolinecolor: "#bbb",
+    },
+    legend: { orientation: "h", y: -0.15 },
+    hovermode: "x unified",
+    paper_bgcolor: "#fff",
+    plot_bgcolor: "#fff",
+  };
+
+  var config = {
+    responsive: true,
+    displayModeBar: true,
+    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+    displaylogo: false,
+  };
+
+  Plotly.newPlot("chart", allTraces, layout, config);
+
+  // Signal table
+  var tbody = document.getElementById("signalTableBody");
+  probes.forEach(function(p, idx) {
+    var vals = p.values;
+    var max = -Infinity, min = Infinity;
+    for (var i = 0; i < vals.length; i++) {
+      if (vals[i] > max) max = vals[i];
+      if (vals[i] < min) min = vals[i];
+    }
+    if (!isFinite(max)) max = 0;
+    if (!isFinite(min)) min = 0;
+
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="color-cell"><span class="swatch" style="background:' + p.color + '"></span></td>' +
+      '<td><label><input type="checkbox" data-idx="' + idx + '" checked onchange="toggleTrace(this)"> ' + p.name + '</label></td>' +
+      '<td>' + p.type + '</td>' +
+      '<td>' + max.toFixed(3) + '</td>' +
+      '<td>' + min.toFixed(3) + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  window.toggleTrace = function(cb) {
+    var idx = parseInt(cb.getAttribute("data-idx"));
+    visible[idx] = cb.checked;
+    var vis = visible.map(function(v) { return v ? true : "legendonly"; });
+    Plotly.restyle("chart", { visible: vis });
+  };
+
+  window.applyTimeRange = function() {
+    var tStart = parseFloat(document.getElementById("tStartInput").value);
+    var tEnd = parseFloat(document.getElementById("tEndInput").value);
+    if (isNaN(tStart) || isNaN(tEnd) || tStart >= tEnd) return;
+    Plotly.relayout("chart", {
+      "xaxis.range": [tStart, tEnd],
+    });
+  };
+
+  window.toggleGrid = function() {
+    var show = document.getElementById("showGrid").checked;
+    var gc = show ? "#e0e0e0" : "transparent";
+    Plotly.relayout("chart", {
+      "xaxis.gridcolor": gc,
+      "yaxis.gridcolor": gc,
+    });
+  };
+
+  window.toggleLegend = function() {
+    var show = document.getElementById("showLegend").checked;
+    Plotly.relayout("chart", {
+      "showlegend": show,
+    });
+  };
+
+  window.toggleNetlist = function() {
+    var pre = document.getElementById("netlistPre");
+    pre.style.display = pre.style.display === "none" ? "block" : "none";
+  };
+
+  window.switchAnalysis = function() {
+    var sel = document.getElementById("analysisType");
+    var newType = sel.value;
+    var currentType = "dc";
+    if (newType === currentType) return;
+    // Navigate using explicit filename map baked into this page at generation time.
+    // The map contains actual filenames (e.g. "rc_lowpass_ac_001_ac_interactive.html")
+    // because different analysis types may use different fixtures (e.g. AC uses
+    // rc_lowpass_ac_001, not rc_lowpass_001).
+    var fileMap = {"tran":"rc_lowpass_001_tran_interactive.html","op":"rc_lowpass_001_op_interactive.html","dc":"rc_lowpass_001_dc_interactive.html","ac":"rc_lowpass_ac_001_ac_interactive.html","fft":"rc_lowpass_fft_001_fft_interactive.html"};
+    if (fileMap && fileMap[newType]) {
+      window.location.href = fileMap[newType];
+    } else {
+      alert("No pre-generated file for " + newType.toUpperCase() + " analysis for this fixture.");
+      sel.value = currentType;
+    }
+  };
+
+  // -----------------------------------------------------------------------
+  // Dynamic sliders — backed by sim_server.ts
+  // -----------------------------------------------------------------------
+  var COMPONENTS = [{"ref":"V1","componentType":"voltage_source","value":"5","numericValue":5,"unit":"V","logScale":false,"min":0,"max":25,"step":0.5},{"ref":"R1","componentType":"resistor","value":"1k","numericValue":1000,"unit":"Ω","logScale":true,"min":1,"max":100000,"step":100},{"ref":"C1","componentType":"capacitor","value":"1u","numericValue":0.000001,"unit":"F","logScale":true,"min":1e-8,"max":0.00009999999999999999,"step":1e-7}];
+  var SIM_SERVER = "http://localhost:3777";
+  var sliderDebounce = null;
+
+  function initSliders() {
+    var panel = document.getElementById("sliderPanel");
+    var container = document.getElementById("sliderContainer");
+    var note = document.getElementById("serverNote");
+
+    if (!COMPONENTS || COMPONENTS.length === 0) {
+      panel.style.display = "none";
+      return;
+    }
+
+    panel.classList.add("visible");
+
+    COMPONENTS.forEach(function(c) {
+      var row = document.createElement("div");
+      row.className = "slider-row";
+
+      var label = document.createElement("label");
+      label.textContent = c.ref;
+      label.title = c.componentType;
+
+      var input = document.createElement("input");
+      input.type = "range";
+      input.id = "slider_" + c.ref;
+      input.dataset.ref = c.ref;
+      input.dataset.unit = c.unit;
+      input.dataset.logScale = c.logScale ? "1" : "0";
+      input.dataset.numericValue = c.numericValue;
+
+      if (c.logScale) {
+        // Log-scale slider: min/max in log space
+        var logMin = Math.log10(c.min);
+        var logMax = Math.log10(c.max);
+        input.min = logMin;
+        input.max = logMax;
+        input.step = (logMax - logMin) / 200;
+        input.value = Math.log10(c.numericValue);
+      } else {
+        input.min = c.min;
+        input.max = c.max;
+        input.step = c.step;
+        input.value = c.numericValue;
+      }
+
+      var valSpan = document.createElement("span");
+      valSpan.className = "val";
+      valSpan.id = "val_" + c.ref;
+      valSpan.textContent = c.value;
+
+      var unitSpan = document.createElement("span");
+      unitSpan.className = "unit";
+      unitSpan.textContent = c.unit;
+
+      row.appendChild(label);
+      row.appendChild(input);
+      row.appendChild(valSpan);
+      row.appendChild(unitSpan);
+      container.appendChild(row);
+
+      input.addEventListener("input", function() {
+        var logS = input.dataset.logScale === "1";
+        var numVal = logS ? Math.pow(10, parseFloat(input.value)) : parseFloat(input.value);
+        valSpan.textContent = formatSliderValue(numVal, c.unit);
+        debounceSimulate();
+      });
+    });
+
+    // Check if server is reachable
+    fetch(SIM_SERVER + "/fixture/rc_lowpass_001", { method: "GET" })
+      .then(function(r) { return r.json(); })
+      .then(function() {
+        note.textContent = "Server connected (" + SIM_SERVER + ")";
+        note.className = "server-note";
+      })
+      .catch(function() {
+        note.innerHTML = "Server not running. Start with: <code>bun run sim_server.ts</code>";
+        note.className = "server-note error";
+      });
+  }
+
+  function formatSliderValue(num, unit) {
+    if (unit === "\u03A9") {
+      if (num >= 1e6) return (num / 1e6).toFixed(1) + "M";
+      if (num >= 1e3) return (num / 1e3).toFixed(1) + "k";
+      return num.toFixed(0);
+    }
+    if (unit === "F") {
+      if (num >= 1) return num.toFixed(2);
+      if (num >= 1e-3) return (num * 1e3).toFixed(1) + "m";
+      if (num >= 1e-6) return (num * 1e6).toFixed(1) + "u";
+      if (num >= 1e-9) return (num * 1e9).toFixed(1) + "n";
+      return num.toExponential(1);
+    }
+    if (unit === "H") {
+      if (num >= 1) return num.toFixed(2);
+      if (num >= 1e-3) return (num * 1e3).toFixed(1) + "m";
+      return (num * 1e6).toFixed(1) + "u";
+    }
+    return num.toFixed(2);
+  }
+
+  function getSliderValues() {
+    var values = {};
+    COMPONENTS.forEach(function(c) {
+      var input = document.getElementById("slider_" + c.ref);
+      if (!input) return;
+      var logS = input.dataset.logScale === "1";
+      var numVal = logS ? Math.pow(10, parseFloat(input.value)) : parseFloat(input.value);
+      values[c.ref] = formatSliderValue(numVal, c.unit);
+    });
+    return values;
+  }
+
+  function debounceSimulate() {
+    if (sliderDebounce) clearTimeout(sliderDebounce);
+    sliderDebounce = setTimeout(runSimulation, 250);
+  }
+
+  function runSimulation() {
+    var loading = document.getElementById("sliderLoading");
+    loading.innerHTML = '<span class="slider-loading"></span>';
+
+    var body = {
+      fixture: "rc_lowpass_001",
+      components: getSliderValues(),
+      analysisType: "dc"
+    };
+
+    fetch(SIM_SERVER + "/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      loading.innerHTML = "";
+      if (!data.ok) {
+        console.error("Simulation error:", data.error);
+        loading.textContent = "Error: " + data.error;
+        return;
+      }
+      // Update chart with new data
+      var newTraces = data.probes.map(function(p, i) {
+        return {
+          x: data.analysisType === "tran"
+            ? data.xValues.map(function(t) { return t * 1000; })
+            : data.xValues,
+          y: p.values,
+          name: p.name,
+          type: "scatter",
+          mode: "lines",
+          line: { color: PALETTE[i % PALETTE.length], width: 1.5 },
+          visible: visible[i] !== false,
+        };
+      });
+
+      // Update visible array for new probe count
+      while (visible.length < newTraces.length) visible.push(true);
+
+      Plotly.react("chart", newTraces, layout, config);
+
+      // Update netlist display
+      document.getElementById("netlistPre").textContent = data.netlist;
+    })
+    .catch(function(e) {
+      loading.innerHTML = "";
+      var note = document.getElementById("serverNote");
+      note.innerHTML = "Server error: " + e.message + ". Is <code>bun run sim_server.ts</code> running?";
+      note.className = "server-note error";
+    });
+  }
+
+  // Initialize sliders on load
+  initSliders();
+
+  // ---- URL param auto-apply (from schematic editor) ----
+  // e.g. ?R1=2.2k&C1=100n — sets slider values and triggers re-simulation
+  function applyUrlParams() {
+    var params = new URLSearchParams(window.location.search);
+    if (params.keys().next().done) return;
+    var applied = false;
+    params.forEach(function(val, ref) {
+      var slider = document.getElementById("slider_" + ref);
+      if (!slider) return;
+      var logS = slider.dataset.logScale === "1";
+      var numVal = parseFloat(val);
+      if (isNaN(numVal)) {
+        // Try parsing SPICE-style values (2.2k, 100n, etc.)
+        numVal = parseSpiceValue(val);
+      }
+      if (isNaN(numVal) || numVal <= 0) return;
+      if (logS) {
+        slider.value = Math.log10(numVal);
+      } else {
+        slider.value = numVal;
+      }
+      var valSpan = document.getElementById("val_" + ref);
+      var unit = slider.dataset.unit || "";
+      if (valSpan) valSpan.textContent = formatSliderValue(numVal, unit);
+      applied = true;
+    });
+    if (applied) {
+      runSimulation();
+    }
+  }
+
+  function parseSpiceValue(s) {
+    s = s.trim().toLowerCase();
+    var suffixes = { t:1e12, g:1e9, meg:1e6, k:1e3, m:1e-3, u:1e-6, n:1e-9, p:1e-12, f:1e-15 };
+    var suffixesArr = Object.keys(suffixes).sort(function(a,b){ return b.length - a.length; });
+    for (var i = 0; i < suffixesArr.length; i++) {
+      var suf = suffixesArr[i];
+      if (s.endsWith(suf)) {
+        var num = parseFloat(s.slice(0, -suf.length));
+        return isNaN(num) ? NaN : num * suffixes[suf];
+      }
+    }
+    return parseFloat(s);
+  }
+
+  applyUrlParams();
+})();
+</script>
+</body>
+</html>

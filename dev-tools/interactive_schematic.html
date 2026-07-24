@@ -1,0 +1,897 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Schematic Editor — {{DESIGN_ID}}</title>
+<style>
+  :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:0; background:#f4f4f4; color:#222; overflow:hidden; height:100vh; }
+
+  .toolbar {
+    background:#1f1f1f; color:#ddd; padding:6px 12px;
+    display:flex; gap:10px; align-items:center; font-size:12px;
+    border-bottom:1px solid #333; z-index:100; position:relative;
+  }
+  .toolbar button {
+    background:#2b2b2b; color:#eee; border:1px solid #3a3a3a;
+    padding:4px 8px; font-size:12px; border-radius:3px; cursor:pointer;
+  }
+  .toolbar button:hover { background:#3a3a3a; }
+  .toolbar button.active { background:#0066cc; border-color:#0066cc; color:#fff; }
+  .toolbar .sep { width:1px; height:18px; background:#444; }
+  .toolbar select {
+    background:#2b2b2b; color:#eee; border:1px solid #3a3a3a;
+    padding:4px 6px; font-size:12px; border-radius:3px;
+  }
+  .toolbar .spacer { flex:1; }
+  .toolbar .badge {
+    background:#0066cc; color:#fff; padding:2px 6px; border-radius:8px;
+    font-size:10px; font-weight:600;
+  }
+
+  .layout { display:flex; height:calc(100vh - 32px); }
+
+  .canvas-wrap {
+    flex:1; position:relative; overflow:hidden; background:#fff;
+    border:1px solid #ddd; border-radius:3px; margin:6px;
+  }
+  .canvas-wrap svg { width:100%; height:100%; cursor:grab; }
+  .canvas-wrap svg.dragging { cursor:grabbing; }
+  .canvas-wrap svg.mode-select { cursor:default; }
+  .canvas-wrap svg.mode-select .sch-component { cursor:move; }
+  .canvas-wrap svg.mode-select .sch-component:hover { filter: drop-shadow(0 0 3px rgba(0,102,204,0.5)); }
+  .canvas-wrap svg .selected-component { filter: drop-shadow(0 0 4px rgba(0,102,204,0.8)); }
+
+  .zoom-indicator {
+    position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.6);
+    color:#fff; padding:3px 8px; border-radius:3px; font-size:11px;
+    pointer-events:none; z-index:10;
+  }
+
+  .right {
+    width:340px; min-width:340px; max-width:340px;
+    background:#fff; border:1px solid #ddd; border-radius:3px;
+    margin:6px 6px 6px 0; overflow-y:auto; display:flex; flex-direction:column;
+  }
+  .right h3 {
+    margin:0; padding:8px 12px; font-size:12px; color:#666;
+    border-bottom:1px solid #ddd; background:#fafafa;
+    text-transform:uppercase; letter-spacing:.5px; flex-shrink:0;
+  }
+
+  .inspector-section { padding:10px 12px; border-bottom:1px solid #eee; }
+  .inspector-section:last-child { border-bottom:none; }
+  .inspector-label { font-size:10px; color:#999; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
+  .inspector-value { font-size:13px; font-weight:600; color:#333; }
+
+  .inspector-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .inspector-row label { font-size:11px; color:#666; min-width:60px; }
+  .inspector-row input {
+    flex:1; padding:4px 6px; font-size:12px; border:1px solid #ddd;
+    border-radius:3px; background:#fafafa;
+  }
+  .inspector-row input:focus { outline:none; border-color:#0066cc; background:#fff; }
+  .inspector-row .unit { font-size:11px; color:#999; }
+
+  .pin-list { list-style:none; margin:0; padding:0; }
+  .pin-list li {
+    font-size:11px; padding:3px 0; border-bottom:1px solid #f5f5f5;
+    display:flex; justify-content:space-between;
+  }
+  .pin-list .pin-name { font-weight:600; color:#333; }
+  .pin-list .pin-net { color:#0066cc; font-family:ui-monospace,Menlo,Consolas,monospace; }
+
+  .net-highlight-info {
+    font-size:11px; color:#666; padding:8px 12px; background:#f0f7ff;
+    border-radius:4px; margin:6px 12px;
+  }
+  .net-highlight-info strong { color:#0066cc; }
+
+  .empty-state {
+    padding:20px 12px; text-align:center; color:#999; font-size:12px;
+  }
+
+  .sim-link {
+    display:block; padding:8px 12px; background:#0066cc; color:#fff;
+    text-decoration:none; text-align:center; font-size:12px; font-weight:600;
+    border-radius:4px; margin:10px 12px; cursor:pointer;
+  }
+  .sim-link:hover { background:#0055aa; }
+
+  .history-controls { display:flex; gap:6px; }
+  .history-controls button { font-size:11px; padding:2px 6px; }
+
+  .connection-dot {
+    fill: #2ca02c; stroke: #fff; stroke-width: 1.5;
+    filter: drop-shadow(0 0 3px rgba(44,160,44,0.6));
+  }
+  .snap-active { filter: drop-shadow(0 0 6px rgba(0,102,204,0.8)); }
+  .connection-badge {
+    display:inline-block; padding:2px 6px; border-radius:3px;
+    font-size:10px; font-weight:600; margin-left:6px;
+  }
+  .connection-badge.connected { background:#d4edda; color:#155724; }
+  .connection-badge.disconnected { background:#f8d7da; color:#721c24; }
+  .status-bar {
+    position:absolute; bottom:8px; right:8px; background:rgba(0,0,0,0.7);
+    color:#fff; padding:4px 10px; border-radius:3px; font-size:11px;
+    pointer:none; z-index:10; display:flex; gap:12px; align-items:center;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <span style="font-weight:600">Schematic</span>
+  <div class="sep"></div>
+  <button id="btnSelect" class="active" onclick="setMode('select')" title="Select & Drag (V)">Select</button>
+  <button id="btnPan" onclick="setMode('pan')" title="Pan (H)">Pan</button>
+  <div class="sep"></div>
+  <button onclick="zoomIn()" title="Zoom In (+)">+</button>
+  <button onclick="zoomOut()" title="Zoom Out (-)">-</button>
+  <button onclick="zoomFit()" title="Fit (F)">Fit</button>
+  <button onclick="zoomReset()" title="Reset (0)">1:1</button>
+  <div class="sep"></div>
+  <div class="history-controls">
+    <button onclick="undo()" title="Undo (Ctrl+Z)">Undo</button>
+    <button onclick="redo()" title="Redo (Ctrl+Shift+Z)">Redo</button>
+  </div>
+  <div class="sep"></div>
+  <button onclick="exportNir()" title="Export modified NIR JSON">Export NIR</button>
+  <button onclick="exportCircuitJson()" title="Export modified Circuit JSON">Export Circuit JSON</button>
+  <div class="spacer"></div>
+  <span class="badge">{{DESIGN_ID}}</span>
+</div>
+
+<div class="layout">
+  <div class="canvas-wrap" id="canvasWrap">
+    <div id="svgContainer">{{SVG_CONTENT}}</div>
+    <div class="zoom-indicator" id="zoomIndicator">100%</div>
+    <div class="status-bar" id="statusBar">
+      <span id="statusSnap">Ready</span>
+      <span id="statusConns">0 connections</span>
+    </div>
+  </div>
+
+  <div class="right" id="inspectorPanel">
+    <h3>Inspector</h3>
+    <div id="inspectorContent">
+      <div class="empty-state">Click a component to inspect</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var circuitJson = {{CIRCUIT_JSON}};
+  var nir = {{NIR_JSON}};
+  var designId = "{{DESIGN_ID}}";
+  var simulatorFile = "{{SIMULATOR_FILE}}";
+
+  var svgEl = document.getElementById("svgContainer").querySelector("svg");
+  if (!svgEl) { console.error("No SVG found"); return; }
+
+  var origSvgWidth = parseFloat(svgEl.getAttribute("width")) || 1200;
+  var origSvgHeight = parseFloat(svgEl.getAttribute("height")) || 600;
+  svgEl.setAttribute("viewBox", "0 0 " + origSvgWidth + " " + origSvgHeight);
+  svgEl.removeAttribute("width");
+  svgEl.removeAttribute("height");
+  svgEl.style.width = "100%";
+  svgEl.style.height = "100%";
+
+  var mode = "select";
+  var selectedId = null;
+  var layoutOverrides = {};
+  var traceOverrides = {};
+  var valueOverrides = {};
+  var historyStack = [];
+  var historyPtr = -1;
+  var panZoom = { x: 0, y: 0, scale: 1 };
+  var dragState = null;
+  var SNAP_THRESHOLD = 30;
+  var connectionDots = [];
+
+  function parseSvgPath(d) {
+    var points = [];
+    var re = /([ML])\s*([-\d.]+)[\s,]+([-\d.]+)/gi;
+    var m;
+    while ((m = re.exec(d)) !== null) {
+      points.push({ x: parseFloat(m[2]), y: parseFloat(m[3]) });
+    }
+    return points;
+  }
+
+  function pointsToSvgPath(points) {
+    if (points.length === 0) return "";
+    return "M " + points[0].x + " " + points[0].y +
+      points.slice(1).map(function(p) { return " L " + p.x + " " + p.y; }).join("");
+  }
+
+  var portPositions = {};
+  var traceEndpoints = [];
+
+  function buildPortMap() {
+    portPositions = {};
+    var comps = circuitJson.filter(function(e) { return e.type === "schematic_component"; });
+    var ports = circuitJson.filter(function(e) { return e.type === "schematic_port"; });
+
+    comps.forEach(function(comp) {
+      var cid = comp.schematic_component_id;
+      var cx = comp.center ? comp.center.x : 0;
+      var cy = comp.center ? comp.center.y : 0;
+      var ov = layoutOverrides[cid];
+      var dx = ov ? ov.x - cx : 0;
+      var dy = ov ? ov.y - cy : 0;
+      ports.filter(function(p) { return p.schematic_component_id === cid; }).forEach(function(p) {
+        var px = p.center ? p.center.x : 0;
+        var py = p.center ? p.center.y : 0;
+        portPositions[p.source_port_id] = { x: px + dx, y: py + dy, compId: cid };
+      });
+    });
+  }
+
+  function buildTraceMap() {
+    traceEndpoints = [];
+    var traceGroups = svgEl.querySelectorAll(".trace[data-schematic-trace-id]");
+    traceGroups.forEach(function(g) {
+      var traceId = g.getAttribute("data-schematic-trace-id");
+      var pathEl = g.querySelector(".sch-trace-path");
+      if (!pathEl) return;
+      var d = pathEl.getAttribute("d");
+      var points = parseSvgPath(d);
+      if (points.length < 2) return;
+      var startPt = points[0];
+      var endPt = points[points.length - 1];
+      var startPort = findNearestPort(startPt.x, startPt.y);
+      var endPort = findNearestPort(endPt.x, endPt.y);
+      traceEndpoints.push({
+        traceId: traceId, pathEl: pathEl,
+        overlayEl: g.querySelector(".sch-trace-hitbox"),
+        points: points, startPt: startPt, endPt: endPt,
+        startPortId: startPort, endPortId: endPort,
+      });
+    });
+  }
+
+  function findNearestPort(x, y) {
+    var best = null, bestDist = 8;
+    Object.keys(portPositions).forEach(function(pid) {
+      var p = portPositions[pid];
+      var dist = Math.sqrt((p.x - x) * (p.x - x) + (p.y - y) * (p.y - y));
+      if (dist < bestDist) { bestDist = dist; best = pid; }
+    });
+    return best;
+  }
+
+  function renderConnectionDots() {
+    connectionDots.forEach(function(d) { if (d.parentNode) d.parentNode.removeChild(d); });
+    connectionDots = [];
+    Object.keys(portPositions).forEach(function(pid) {
+      var pos = portPositions[pid];
+      var isConnected = traceEndpoints.some(function(te) {
+        return (te.startPortId === pid || te.endPortId === pid);
+      });
+      if (!isConnected) return;
+      var circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("cx", pos.x);
+      circle.setAttribute("cy", pos.y);
+      circle.setAttribute("r", "4");
+      circle.setAttribute("class", "connection-dot");
+      circle.style.pointerEvents = "none";
+      svgEl.appendChild(circle);
+      connectionDots.push(circle);
+    });
+  }
+
+  function updateStatusBar(snapInfo) {
+    var snapEl = document.getElementById("statusSnap");
+    var connEl = document.getElementById("statusConns");
+    if (!snapEl || !connEl) return;
+    if (snapInfo) {
+      snapEl.textContent = "Snap: " + snapInfo.portId + " \u2192 wire";
+      snapEl.style.color = "#4fc3f7";
+    } else if (dragState && dragState.moved) {
+      snapEl.textContent = "Dragging...";
+      snapEl.style.color = "#ffb74d";
+    } else {
+      snapEl.textContent = "Ready";
+      snapEl.style.color = "#aaa";
+    }
+    var connCount = 0;
+    traceEndpoints.forEach(function(te) {
+      if (te.startPortId) connCount++;
+      if (te.endPortId) connCount++;
+    });
+    connEl.textContent = connCount + " connections";
+  }
+
+  var snapIndicator = null;
+  var snapLine = null;
+  function showSnapIndicator(x, y, fromX, fromY) {
+    if (!snapIndicator) {
+      snapIndicator = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      snapIndicator.setAttribute("r", "10");
+      snapIndicator.setAttribute("fill", "rgba(0,102,204,0.2)");
+      snapIndicator.setAttribute("stroke", "#0066cc");
+      snapIndicator.setAttribute("stroke-width", "2");
+      snapIndicator.setAttribute("stroke-dasharray", "4 2");
+      snapIndicator.style.pointerEvents = "none";
+      svgEl.appendChild(snapIndicator);
+    }
+    snapIndicator.setAttribute("cx", x);
+    snapIndicator.setAttribute("cy", y);
+    snapIndicator.style.display = "";
+
+    if (!snapLine) {
+      snapLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      snapLine.setAttribute("stroke", "#0066cc");
+      snapLine.setAttribute("stroke-width", "1.5");
+      snapLine.setAttribute("stroke-dasharray", "6 3");
+      snapLine.setAttribute("opacity", "0.6");
+      snapLine.style.pointerEvents = "none";
+      svgEl.appendChild(snapLine);
+    }
+    snapLine.setAttribute("x1", fromX);
+    snapLine.setAttribute("y1", fromY);
+    snapLine.setAttribute("x2", x);
+    snapLine.setAttribute("y2", y);
+    snapLine.style.display = "";
+  }
+  function hideSnapIndicator() {
+    if (snapIndicator) snapIndicator.style.display = "none";
+    if (snapLine) snapLine.style.display = "none";
+  }
+
+  function findSnapForComponent(compId, newCx, newCy) {
+    var ports = circuitJson.filter(function(e) {
+      return e.type === "schematic_port" && e.schematic_component_id === compId;
+    });
+    if (ports.length === 0) return null;
+    var origComp = circuitJson.find(function(e) {
+      return e.type === "schematic_component" && e.schematic_component_id === compId;
+    });
+    if (!origComp || !origComp.center) return null;
+    var bestSnap = null;
+    var bestDist = SNAP_THRESHOLD;
+
+    ports.forEach(function(port) {
+      var pOffX = (port.center ? port.center.x : 0) - origComp.center.x;
+      var pOffY = (port.center ? port.center.y : 0) - origComp.center.y;
+      var pinWorldX = newCx + pOffX;
+      var pinWorldY = newCy + pOffY;
+
+      traceEndpoints.forEach(function(te) {
+        [
+          { pt: te.startPt, endKey: "start" },
+          { pt: te.endPt, endKey: "end" },
+        ].forEach(function(c) {
+          if (!c.pt) return;
+          var dist = Math.sqrt(
+            (c.pt.x - pinWorldX) * (c.pt.x - pinWorldX) +
+            (c.pt.y - pinWorldY) * (c.pt.y - pinWorldY)
+          );
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestSnap = {
+              traceId: te.traceId, endKey: c.endKey,
+              targetX: c.pt.x, targetY: c.pt.y,
+              snapDx: c.pt.x - pinWorldX, snapDy: c.pt.y - pinWorldY,
+              portId: port.source_port_id,
+              pinX: pinWorldX, pinY: pinWorldY,
+            };
+          }
+        });
+      });
+    });
+    return bestSnap;
+  }
+
+  function updateTracePath(te) {
+    var key = te.traceId + "_" + te.endKey;
+    var pts = te.points.slice();
+    if (te.pathEl) te.pathEl.setAttribute("d", pointsToSvgPath(pts));
+    if (te.overlayEl) te.overlayEl.setAttribute("d", pointsToSvgPath(pts));
+  }
+
+  function updateViewBox() {
+    var sx = panZoom.x, sy = panZoom.y;
+    var sw = origSvgWidth / panZoom.scale;
+    var sh = origSvgHeight / panZoom.scale;
+    svgEl.setAttribute("viewBox", sx + " " + sy + " " + sw + " " + sh);
+    document.getElementById("zoomIndicator").textContent = Math.round(panZoom.scale * 100) + "%";
+  }
+
+  svgEl.addEventListener("wheel", function(e) {
+    e.preventDefault();
+    var rect = svgEl.getBoundingClientRect();
+    var mx = (e.clientX - rect.left) / rect.width;
+    var my = (e.clientY - rect.top) / rect.height;
+    var factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    var newScale = Math.max(0.1, Math.min(20, panZoom.scale * factor));
+    var vbW = origSvgWidth / panZoom.scale;
+    var vbH = origSvgHeight / panZoom.scale;
+    panZoom.x += mx * vbW * (1 - 1 / factor);
+    panZoom.y += my * vbH * (1 - 1 / factor);
+    panZoom.scale = newScale;
+    updateViewBox();
+  }, { passive: false });
+
+  function zoomIn() {
+    var cx = panZoom.x + origSvgWidth / panZoom.scale / 2;
+    var cy = panZoom.y + origSvgHeight / panZoom.scale / 2;
+    panZoom.scale = Math.min(20, panZoom.scale * 1.3);
+    panZoom.x = cx - origSvgWidth / panZoom.scale / 2;
+    panZoom.y = cy - origSvgHeight / panZoom.scale / 2;
+    updateViewBox();
+  }
+  function zoomOut() {
+    var cx = panZoom.x + origSvgWidth / panZoom.scale / 2;
+    var cy = panZoom.y + origSvgHeight / panZoom.scale / 2;
+    panZoom.scale = Math.max(0.1, panZoom.scale / 1.3);
+    panZoom.x = cx - origSvgWidth / panZoom.scale / 2;
+    panZoom.y = cy - origSvgHeight / panZoom.scale / 2;
+    updateViewBox();
+  }
+  function zoomReset() { panZoom = { x: 0, y: 0, scale: 1 }; updateViewBox(); }
+  function zoomFit() {
+    panZoom = { x: 0, y: 0, scale: 1 };
+    updateViewBox();
+  }
+  window.zoomIn = zoomIn;
+  window.zoomOut = zoomOut;
+  window.zoomReset = zoomReset;
+  window.zoomFit = zoomFit;
+
+  function setMode(m) {
+    mode = m;
+    document.getElementById("btnSelect").className = m === "select" ? "active" : "";
+    document.getElementById("btnPan").className = m === "pan" ? "active" : "";
+    if (m === "select") {
+      svgEl.classList.add("mode-select");
+    } else {
+      svgEl.classList.remove("mode-select");
+    }
+  }
+  window.setMode = setMode;
+
+  function clientToSvg(clientX, clientY) {
+    var rect = svgEl.getBoundingClientRect();
+    var fracX = (clientX - rect.left) / rect.width;
+    var fracY = (clientY - rect.top) / rect.height;
+    var vbW = origSvgWidth / panZoom.scale;
+    var vbH = origSvgHeight / panZoom.scale;
+    return {
+      x: panZoom.x + fracX * vbW,
+      y: panZoom.y + fracY * vbH
+    };
+  }
+
+  var panDrag = null;
+  svgEl.addEventListener("mousedown", function(e) {
+    if (mode === "pan" || e.button === 1) {
+      panDrag = { sx: e.clientX, sy: e.clientY, ox: panZoom.x, oy: panZoom.y };
+      svgEl.classList.add("dragging");
+      e.preventDefault();
+      return;
+    }
+    if (mode === "select" && e.button === 0) {
+      var comp = e.target.closest(".sch-component");
+      if (!comp) {
+        selectComponent(null);
+        return;
+      }
+      var compId = comp.getAttribute("data-schematic-component-id");
+      if (!compId) { selectComponent(null); return; }
+      selectComponent(compId);
+      var svgPt = clientToSvg(e.clientX, e.clientY);
+      var override = layoutOverrides[compId];
+      var origPos = override || GetComponentCenter(compId);
+      dragState = {
+        compId: compId,
+        comp: comp,
+        startSvgX: svgPt.x, startSvgY: svgPt.y,
+        origX: origPos.x, origPos: origPos.y,
+        origCompX: origPos.x, origCompY: origPos.y,
+        moved: false
+      };
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener("mousemove", function(e) {
+    if (panDrag) {
+      var rect = svgEl.getBoundingClientRect();
+      var dxSvg = (e.clientX - panDrag.sx) / rect.width * (origSvgWidth / panZoom.scale);
+      var dySvg = (e.clientY - panDrag.sy) / rect.height * (origSvgHeight / panZoom.scale);
+      panZoom.x = panDrag.ox - dxSvg;
+      panZoom.y = panDrag.oy - dySvg;
+      updateViewBox();
+    }
+    if (dragState) {
+      var svgPt = clientToSvg(e.clientX, e.clientY);
+      var dx = svgPt.x - dragState.startSvgX;
+      var dy = svgPt.y - dragState.startSvgY;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) dragState.moved = true;
+      var newX = dragState.origCompX + dx;
+      var newY = dragState.origCompY + dy;
+
+      var snap = findSnapForComponent(dragState.compId, newX, newY);
+      if (snap) {
+        newX += snap.snapDx;
+        newY += snap.snapDy;
+        showSnapIndicator(snap.targetX, snap.targetY, snap.pinX + snap.snapDx, snap.pinY + snap.snapDy);
+        dragState.snap = snap;
+        dragState.comp.classList.add("snap-active");
+      } else {
+        hideSnapIndicator();
+        dragState.snap = null;
+        dragState.comp.classList.remove("snap-active");
+      }
+      moveComponentVisual(dragState.compId, newX, newY);
+      dragState.lastX = newX;
+      dragState.lastY = newY;
+      updateStatusBar(snap);
+    }
+  });
+
+  document.addEventListener("mouseup", function(e) {
+    if (panDrag) {
+      panDrag = null;
+      svgEl.classList.remove("dragging");
+    }
+    if (dragState) {
+      hideSnapIndicator();
+      if (dragState.comp) dragState.comp.classList.remove("snap-active");
+      if (dragState.moved) {
+        var finalX = dragState.lastX != null ? dragState.lastX : dragState.origCompX;
+        var finalY = dragState.lastY != null ? dragState.lastY : dragState.origCompY;
+        layoutOverrides[dragState.compId] = { x: finalX, y: finalY };
+
+        if (dragState.snap) {
+          applySnapTrace(dragState.compId, dragState.snap);
+        }
+        buildPortMap();
+        buildTraceMap();
+        renderConnectionDots();
+        pushHistory();
+      }
+      updateStatusBar(null);
+      dragState = null;
+      svgEl.classList.remove("dragging");
+      updateInspector();
+    }
+  });
+
+  function applySnapTrace(compId, snap) {
+    var origComp = circuitJson.find(function(e) {
+      return e.type === "schematic_component" && e.schematic_component_id === compId;
+    });
+    if (!origComp || !origComp.center) return;
+    var ov = layoutOverrides[compId];
+    var dx = ov.x - origComp.center.x;
+    var dy = ov.y - origComp.center.y;
+    var ports = circuitJson.filter(function(e) {
+      return e.type === "schematic_port" && e.schematic_component_id === compId;
+    });
+    ports.forEach(function(port) {
+      var pOffX = (port.center ? port.center.x : 0) - origComp.center.x;
+      var pOffY = (port.center ? port.center.y : 0) - origComp.center.y;
+      var pinWorldX = ov.x + pOffX;
+      var pinWorldY = ov.y + pOffY;
+      traceEndpoints.forEach(function(te) {
+        var moved = false;
+        if (te.startPt && Math.abs(te.startPt.x - snap.targetX) < 1 && Math.abs(te.startPt.y - snap.targetY) < 1) {
+          te.startPt = { x: pinWorldX, y: pinWorldY };
+          te.points[0] = te.startPt;
+          moved = true;
+        }
+        if (te.endPt && Math.abs(te.endPt.x - snap.targetX) < 1 && Math.abs(te.endPt.y - snap.targetY) < 1) {
+          te.endPt = { x: pinWorldX, y: pinWorldY };
+          te.points[te.points.length - 1] = te.endPt;
+          moved = true;
+        }
+        if (moved) updateTracePath(te);
+      });
+    });
+  }
+
+  function GetComponentCenter(compId) {
+    var el = circuitJson.find(function(e) {
+      return e.type === "schematic_component" && e.schematic_component_id === compId;
+    });
+    return el && el.center ? { x: el.center.x, y: el.center.y } : { x: 0, y: 0 };
+  }
+
+  function selectComponent(compId) {
+    if (selectedId) {
+      var prev = svgEl.querySelector('[data-schematic-component-id="' + selectedId + '"]');
+      if (prev) prev.classList.remove("selected-component");
+    }
+    selectedId = compId;
+    if (compId) {
+      var curr = svgEl.querySelector('[data-schematic-component-id="' + compId + '"]');
+      if (curr) curr.classList.add("selected-component");
+    }
+    updateInspector();
+  }
+
+  function moveComponentVisual(compId, x, y) {
+    var g = svgEl.querySelector('[data-schematic-component-id="' + compId + '"]');
+    if (!g) return;
+    g.setAttribute("transform", "translate(" + x + "," + y + ")");
+  }
+
+  function updateInspector() {
+    var content = document.getElementById("inspectorContent");
+    if (!selectedId) {
+      content.innerHTML = '<div class="empty-state">Click a component to inspect</div>';
+      return;
+    }
+    var schComp = circuitJson.find(function(e) {
+      return e.type === "schematic_component" && e.schematic_component_id === selectedId;
+    });
+    if (!schComp) {
+      content.innerHTML = '<div class="empty-state">Component not found</div>';
+      return;
+    }
+    var sourceId = schComp.source_component_id;
+    var sourceComp = circuitJson.find(function(e) {
+      return (e.type === "source_component" || e.type === "source_component_base") && e.source_component_id === sourceId;
+    });
+    var ref = sourceComp ? (sourceComp.name || "?") : "?";
+    var componentType = "?";
+    var footprint = "?";
+    var nirComp = nir.components ? nir.components.find(function(c) { return c.ref === ref; }) : null;
+    if (nirComp) {
+      componentType = nirComp.component_type || "?";
+      footprint = nirComp.footprint || "?";
+    } else if (sourceComp) {
+      componentType = sourceComp.component_type || sourceComp.ftype || "?";
+      footprint = sourceComp.footprint || "?";
+    }
+    var origValue = nirComp ? (nirComp.value || "-") : "-";
+    var currentValue = valueOverrides[ref] || origValue;
+
+    var pos = layoutOverrides[selectedId] || schComp.center || { x: 0, y: 0 };
+
+    var ports = circuitJson.filter(function(e) {
+      return e.type === "schematic_port" && e.schematic_component_id === selectedId;
+    });
+
+    var pins = ports.map(function(p) {
+      var sourcePort = circuitJson.find(function(e) {
+        return e.type === "source_port" && e.source_port_id === p.source_port_id;
+      });
+      var pinName = sourcePort ? sourcePort.name : (p.display_pin_label || "?");
+      var connectedNet = "-";
+      var sourceTrace = circuitJson.find(function(e) {
+        if (e.type !== "source_trace") return false;
+        return e.connected_source_port_ids && e.connected_source_port_ids.indexOf(p.source_port_id) >= 0;
+      });
+      if (sourceTrace && sourceTrace.connected_source_net_ids && sourceTrace.connected_source_net_ids.length > 0) {
+        var netId = sourceTrace.connected_source_net_ids[0];
+        var net = circuitJson.find(function(e) {
+          return e.type === "source_net" && e.source_net_id === netId;
+        });
+        connectedNet = net ? net.name : "-";
+      }
+      return { name: pinName, net: connectedNet, portId: p.source_port_id };
+    });
+
+    var html = '';
+    html += '<div class="inspector-section">';
+    html += '<div class="inspector-label">Component</div>';
+    html += '<div class="inspector-value">' + ref + '</div>';
+    html += '</div>';
+
+    html += '<div class="inspector-section">';
+    html += '<div class="inspector-row"><label>Type</label><span class="inspector-value" style="font-size:12px">' + componentType + '</span></div>';
+    html += '<div class="inspector-row"><label>Footprint</label><span style="font-size:12px;color:#666">' + footprint + '</span></div>';
+    html += '</div>';
+
+    html += '<div class="inspector-section">';
+    html += '<div class="inspector-label">Value</div>';
+    html += '<div class="inspector-row">';
+    html += '<input type="text" id="valueInput" value="' + escapeHtml(currentValue) + '" onchange="onValueChange(\'' + escapeJs(ref) + '\', this.value)">';
+    html += '<span class="unit">' + getUnit(componentType) + '</span>';
+    html += '</div>';
+    if (valueOverrides[ref]) {
+      html += '<div style="font-size:10px;color:#0066cc;margin-top:2px">Modified (original: ' + escapeHtml(origValue) + ')</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="inspector-section">';
+    html += '<div class="inspector-label">Position (schematic)</div>';
+    html += '<div style="font-size:11px;color:#666">x: ' + pos.x.toFixed(1) + ' y: ' + pos.y.toFixed(1) + '</div>';
+    html += '</div>';
+
+    if (pins.length > 0) {
+      html += '<div class="inspector-section">';
+      html += '<div class="inspector-label">Pins</div>';
+      html += '<ul class="pin-list">';
+      pins.forEach(function(p) {
+        var isConnected = traceEndpoints.some(function(te) {
+          return (te.startPortId === p.portId || te.endPortId === p.portId);
+        });
+        var badge = isConnected
+          ? '<span class="connection-badge connected">connected</span>'
+          : '<span class="connection-badge disconnected">open</span>';
+        html += '<li><span class="pin-name">' + escapeHtml(p.name) + badge + '</span><span class="pin-net">' + escapeHtml(p.net) + '</span></li>';
+      });
+      html += '</ul>';
+      html += '</div>';
+    }
+
+    if (simulatorFile) {
+      html += '<a class="sim-link" onclick="openSimulator()" title="Open interactive simulator with current values">Open Simulator</a>';
+    }
+
+    content.innerHTML = html;
+  }
+
+  function getUnit(type) {
+    if (type === "resistor") return "\u03A9";
+    if (type === "capacitor") return "F";
+    if (type === "inductor") return "H";
+    if (type === "voltage_source" || type === "current_source") return "V";
+    return "";
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+  function escapeJs(s) {
+    return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+  }
+
+  window.onValueChange = function(ref, newValue) {
+    newValue = newValue.trim();
+    if (!newValue) return;
+    valueOverrides[ref] = newValue;
+    updateSchematicText(ref, newValue);
+    pushHistory();
+    updateInspector();
+  };
+
+  function updateSchematicText(ref, newValue) {
+    var schComp = circuitJson.find(function(e) {
+      return e.type === "schematic_component" && e.schematic_component_id &&
+        circuitJson.some(function(s) {
+          return s.type === "source_component" && s.source_component_id === e.source_component_id && s.name === ref;
+        });
+    });
+    if (!schComp) return;
+    var compId = schComp.schematic_component_id;
+    var texts = svgEl.querySelectorAll('[data-schematic-component-id="' + compId + '"] text');
+    texts.forEach(function(t) {
+      var existing = t.textContent.trim();
+      var nirComp = nir.components ? nir.components.find(function(c) { return c.ref === ref; }) : null;
+      var oldValue = nirComp ? (nirComp.value || "") : "";
+      if (existing === oldValue && oldValue !== "") {
+        t.textContent = newValue;
+      }
+    });
+  }
+
+  window.openSimulator = function() {
+    if (!simulatorFile) return;
+    var params = [];
+    Object.keys(valueOverrides).forEach(function(ref) {
+      params.push(encodeURIComponent(ref) + "=" + encodeURIComponent(valueOverrides[ref]));
+    });
+    var url = simulatorFile + (params.length > 0 ? "?" + params.join("&") : "");
+    window.open(url, "_blank");
+  };
+
+  function pushHistory() {
+    historyStack = historyStack.slice(0, historyPtr + 1);
+    historyStack.push({
+      layoutOverrides: JSON.parse(JSON.stringify(layoutOverrides)),
+      valueOverrides: JSON.parse(JSON.stringify(valueOverrides))
+    });
+    historyPtr = historyStack.length - 1;
+  }
+  function undo() {
+    if (historyPtr <= 0) return;
+    historyPtr--;
+    var state = historyStack[historyPtr];
+    layoutOverrides = JSON.parse(JSON.stringify(state.layoutOverrides));
+    valueOverrides = JSON.parse(JSON.stringify(state.valueOverrides));
+    applyLayoutOverrides();
+    updateInspector();
+  }
+  function redo() {
+    if (historyPtr >= historyStack.length - 1) return;
+    historyPtr++;
+    var state = historyStack[historyPtr];
+    layoutOverrides = JSON.parse(JSON.stringify(state.layoutOverrides));
+    valueOverrides = JSON.parse(JSON.stringify(state.valueOverrides));
+    applyLayoutOverrides();
+    updateInspector();
+  }
+  window.undo = undo;
+  window.redo = redo;
+
+  function applyLayoutOverrides() {
+    Object.keys(layoutOverrides).forEach(function(compId) {
+      var pos = layoutOverrides[compId];
+      moveComponentVisual(compId, pos.x, pos.y);
+    });
+  }
+
+  window.exportNir = function() {
+    var modifiedNir = JSON.parse(JSON.stringify(nir));
+    if (modifiedNir.components) {
+      modifiedNir.components.forEach(function(c) {
+        if (valueOverrides[c.ref]) {
+          c.value = valueOverrides[c.ref];
+        }
+      });
+    }
+    downloadJson(modifiedNir, designId + "_modified.nir.json");
+  };
+
+  window.exportCircuitJson = function() {
+    var modified = JSON.parse(JSON.stringify(circuitJson));
+    Object.keys(layoutOverrides).forEach(function(compId) {
+      var el = modified.find(function(e) {
+        return e.type === "schematic_component" && e.schematic_component_id === compId;
+      });
+      if (el) el.center = layoutOverrides[compId];
+    });
+    downloadJson(modified, designId + "_circuit.json");
+  };
+
+  function downloadJson(obj, filename) {
+    var blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  document.addEventListener("keydown", function(e) {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.key === "v" || e.key === "V") setMode("select");
+    if (e.key === "h" || e.key === "H") setMode("pan");
+    if (e.key === "+" || e.key === "=") zoomIn();
+    if (e.key === "-") zoomOut();
+    if (e.key === "f" || e.key === "F") zoomFit();
+    if (e.key === "0") zoomReset();
+    if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey) { e.preventDefault(); redo(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === "y") { e.preventDefault(); redo(); }
+    if (e.key === "Escape") selectComponent(null);
+  });
+
+  svgEl.addEventListener("mouseover", function(e) {
+    var trace = e.target.closest("[data-subcircuit-connectivity-map-key]");
+    if (!trace) return;
+    var key = trace.getAttribute("data-subcircuit-connectivity-map-key");
+    if (!key) return;
+    svgEl.querySelectorAll('[data-subcircuit-connectivity-map-key="' + key + '"]').forEach(function(t) {
+      t.style.filter = "invert(1) brightness(1.2)";
+    });
+  });
+  svgEl.addEventListener("mouseout", function(e) {
+    var trace = e.target.closest("[data-subcircuit-connectivity-map-key]");
+    if (!trace) return;
+    var key = trace.getAttribute("data-subcircuit-connectivity-map-key");
+    if (!key) return;
+    svgEl.querySelectorAll('[data-subcircuit-connectivity-map-key="' + key + '"]').forEach(function(t) {
+      t.style.filter = "";
+    });
+  });
+
+  pushHistory();
+  buildPortMap();
+  buildTraceMap();
+  renderConnectionDots();
+  updateStatusBar(null);
+})();
+</script>
+</body>
+</html>

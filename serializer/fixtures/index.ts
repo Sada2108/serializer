@@ -8,7 +8,15 @@
 import libbrechtHallNirRaw from "./libbrecht-hall.nir.json"
 import instrumentationAmpRaw from "./instrumentation_amp_001.nir.json"
 import opampNoninvNirJson from "./opamp_noninv_001.nir.json"
+import voltageDividerNirJson from "./voltage_divider_001.nir.json"
+import rcLowpassNirJson from "./rc_lowpass_001.nir.json"
+import rcLowpassAcNirJson from "./rc_lowpass_ac_001.nir.json"
+import rcLowpassFftNirJson from "./rc_lowpass_fft_001.nir.json"
 export const opampNoninvNir = opampNoninvNirJson
+export const voltageDividerNir = voltageDividerNirJson
+export const rcLowpassNir = rcLowpassNirJson
+export const rcLowpassAcNir = rcLowpassAcNirJson
+export const rcLowpassFftNir = rcLowpassFftNirJson
 // --------------------------------------------------------------------------- //
 // v0.1 (Libbrecht-Hall) — legacy schema
 // --------------------------------------------------------------------------- //
@@ -51,6 +59,7 @@ export interface NirV11Component {
   footprint: string
   footprint_geometry_ref?: string
   value?: string | null
+  ac_magnitude?: string | null
   manufacturer?: string
   datasheet_confidence?: number
   justification?: string

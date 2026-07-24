@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SPICE Simulator — rc_lowpass_001</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { margin:0; padding:0; background:#f4f4f4; color:#222; }
+  .toolbar { background:#1f1f1f; color:#ddd; padding:6px 10px; display:flex; gap:14px; align-items:center; font-size:12px; }
+  .toolbar label { display:flex; align-items:center; gap:4px; cursor:pointer; }
+  .toolbar select, .toolbar button { background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; padding:4px 6px; font-size:12px; border-radius:3px; }
+  .toolbar button { cursor:pointer; }
+  .toolbar input[type="number"] { width:46px; padding:2px 4px; font-size:12px; background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; border-radius:3px; }
+  .toolbar .sep { width:1px; height:18px; background:#444; }
+  .layout { display:flex; flex-direction:column; height:calc(100vh - 32px); }
+  .middle { display:flex; flex:1; min-height:0; }
+  .chart-wrap { flex:1; min-width:0; background:#fff; position:relative; border:1px solid #ddd; border-radius:3px; margin:6px; overflow:hidden; }
+  .right { width:340px; min-width:340px; max-width:340px; background:#fff; border:1px solid #ddd; border-radius:3px; margin:6px 6px 6px 0; overflow:auto; }
+  .right h3 { margin:0; padding:6px 10px; font-size:12px; color:#666; border-bottom:1px solid #ddd; background:#fafafa; text-transform:uppercase; letter-spacing:.5px; }
+  .signal-list table { border-collapse:collapse; width:100%; font-size:12px; }
+  .signal-list th { background:#f7f7f7; padding:4px 6px; text-align:left; font-weight:600; color:#555; border-bottom:1px solid #ddd; position:sticky; top:0; }
+  .signal-list td { padding:3px 6px; border-bottom:1px solid #f2f2f2; font-family:ui-monospace, Menlo, Consolas, monospace; }
+  .signal-list td.color-cell { width:18px; padding:3px 4px; }
+  .signal-list .swatch { display:inline-block; width:12px; height:12px; border-radius:2px; vertical-align:middle; }
+  .signal-list input[type="checkbox"] { margin:0; cursor:pointer; }
+  .netlist-panel { border-top:1px solid #ddd; }
+  .netlist-panel pre { margin:0; padding:8px 10px; font-size:11px; line-height:1.5; overflow:auto; max-height:300px; background:#fafafa; color:#333; white-space:pre-wrap; word-break:break-all; }
+  .netlist-toggle { padding:4px 8px; font-size:12px; cursor:pointer; background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; border-radius:3px; margin:6px; }
+  .warn-banner { background:#fff3cd; color:#856404; padding:8px 12px; font-size:12px; border-bottom:1px solid #ffc107; }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <label>Analysis:
+      <select id="analysisType" onchange="switchAnalysis()">
+        <option value="tran" >Transient (TRAN)</option>
+        <option value="op" selected>Operating Point (OP)</option>
+        <option value="dc" >DC Sweep (DC)</option>
+        <option value="ac" disabled>AC Analysis (AC)</option>
+        <option value="pz" disabled>Pole-Zero (PZ)</option>
+        <option value="noise" disabled>Noise (NOISE)</option>
+        <option value="sp" disabled>S-Parameter (SP)</option>
+        <option value="fft" disabled>FFT</option>
+      </select>
+    </label>
+    <div class="sep"></div>
+    <label>Start:
+      <input type="number" id="tStartInput" value="0.000" step="0.01">
+    </label>
+    <label>End:
+      <input type="number" id="tEndInput" value="0.000" step="0.01">
+    </label>
+    <button onclick="applyTimeRange()">Apply</button>
+    <div class="sep"></div>
+    <label><input type="checkbox" id="showGrid" checked onchange="toggleGrid()"> Grid</label>
+    <label><input type="checkbox" id="showLegend" checked onchange="toggleLegend()"> Legend</label>
+    <div class="sep"></div>
+    <span style="color:#999">Fixture: rc_lowpass_001</span>
+  </div>
+
+  <div class="warn-banner">⚠ <strong>All probes flat at 0V</strong> — VIN / VCC are not set in this fixture, so implicit V-sources default to DC 0. See <code>netlistFromCircuitJson.ts</code> (voltage-source injection) — this is the chart of what NGSPICE actually solved.</div>
+
+  <div class="layout">
+    <div class="middle">
+      <div class="chart-wrap" id="chart"></div>
+      <div class="right">
+        <h3>Signals</h3>
+        <div class="signal-list">
+          <table>
+            <thead><tr><th></th><th>Signal</th><th>Type</th><th>Max</th><th>Min</th></tr></thead>
+            <tbody id="signalTableBody"></tbody>
+          </table>
+        </div>
+        <div class="netlist-panel">
+          <button class="netlist-toggle" onclick="toggleNetlist()">Show / Hide Netlist</button>
+          <pre id="netlistPre" style="display:none">* Open_Forge generated netlist (from Circuit JSON + NIR)
+
+V1 1 0 PULSE(0 5 0 1n 1n 10m 20m)
+R1 1 2 1k
+C1 2 0 1u
+
+* --- Simulation commands ---
+.op
+.end</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  var probes = [{"name":"v(1)","color":"#1f77b4","values":[0],"type":"voltage"},{"name":"v(2)","color":"#d62728","values":[0],"type":"voltage"},{"name":"i(v1)","color":"#2ca02c","values":[0],"type":"current"}];
+
+  var PALETTE = [
+    "#1f77b4","#d62728","#2ca02c","#ff7f0e","#9467bd",
+    "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf",
+    "#393b79","#637939","#8c6d31","#843c39","#7b4178",
+    "#3182bd","#31a354","#756bb1","#636363","#d6616b",
+  ];
+
+  var timeData = [0];
+  var xLabel = "Index";
+  var timeMs = timeData;
+
+  var allTraces = [];
+  var visible = [];
+
+  probes.forEach(function(p, idx) {
+    var trace = {
+      x: timeMs,
+      y: p.values,
+      name: p.name,
+      type: "scatter",
+      mode: "lines",
+      line: { color: p.color, width: 1.5 },
+      visible: true,
+    };
+    allTraces.push(trace);
+    visible.push(true);
+  });
+
+  var layout = {
+    margin: { l: 60, r: 20, t: 30, b: 50 },
+    xaxis: {
+      title: xLabel,
+      gridcolor: "#e0e0e0",
+      zeroline: true,
+      zerolinecolor: "#bbb",
+    },
+    yaxis: {
+      title: "Voltage (V)",
+      gridcolor: "#e0e0e0",
+      zeroline: true,
+      zerolinecolor: "#bbb",
+    },
+    legend: { orientation: "h", y: -0.15 },
+    hovermode: "x unified",
+    paper_bgcolor: "#fff",
+    plot_bgcolor: "#fff",
+  };
+
+  var config = {
+    responsive: true,
+    displayModeBar: true,
+    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+    displaylogo: false,
+  };
+
+  Plotly.newPlot("chart", allTraces, layout, config);
+
+  // Signal table
+  var tbody = document.getElementById("signalTableBody");
+  probes.forEach(function(p, idx) {
+    var vals = p.values;
+    var max = -Infinity, min = Infinity;
+    for (var i = 0; i < vals.length; i++) {
+      if (vals[i] > max) max = vals[i];
+      if (vals[i] < min) min = vals[i];
+    }
+    if (!isFinite(max)) max = 0;
+    if (!isFinite(min)) min = 0;
+
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="color-cell"><span class="swatch" style="background:' + p.color + '"></span></td>' +
+      '<td><label><input type="checkbox" data-idx="' + idx + '" checked onchange="toggleTrace(this)"> ' + p.name + '</label></td>' +
+      '<td>' + p.type + '</td>' +
+      '<td>' + max.toFixed(3) + '</td>' +
+      '<td>' + min.toFixed(3) + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  window.toggleTrace = function(cb) {
+    var idx = parseInt(cb.getAttribute("data-idx"));
+    visible[idx] = cb.checked;
+    var vis = visible.map(function(v) { return v ? true : "legendonly"; });
+    Plotly.restyle("chart", { visible: vis });
+  };
+
+  window.applyTimeRange = function() {
+    var tStart = parseFloat(document.getElementById("tStartInput").value);
+    var tEnd = parseFloat(document.getElementById("tEndInput").value);
+    if (isNaN(tStart) || isNaN(tEnd) || tStart >= tEnd) return;
+    Plotly.relayout("chart", {
+      "xaxis.range": [tStart, tEnd],
+    });
+  };
+
+  window.toggleGrid = function() {
+    var show = document.getElementById("showGrid").checked;
+    var gc = show ? "#e0e0e0" : "transparent";
+    Plotly.relayout("chart", {
+      "xaxis.gridcolor": gc,
+      "yaxis.gridcolor": gc,
+    });
+  };
+
+  window.toggleLegend = function() {
+    var show = document.getElementById("showLegend").checked;
+    Plotly.relayout("chart", {
+      "showlegend": show,
+    });
+  };
+
+  window.toggleNetlist = function() {
+    var pre = document.getElementById("netlistPre");
+    pre.style.display = pre.style.display === "none" ? "block" : "none";
+  };
+
+  window.switchAnalysis = function() {
+    var sel = document.getElementById("analysisType");
+    var newType = sel.value;
+    if (newType !== "op") {
+      alert("To change analysis type, re-run the script with a different argument:\n  bun run render_interactive_simulator.ts <fixture> " + newType);
+      sel.value = "op";
+    }
+  };
+})();
+</script>
+</body>
+</html>

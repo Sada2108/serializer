@@ -88,6 +88,12 @@ const COMPONENT_TYPE_TO_SPICE_PREFIX: Record<string, string> = {
   digital_potentiometer: "X",
   mcu: "X",
   logic: "X",
+  // v1.1 ftype variants
+  simple_resistor: "R",
+  simple_capacitor: "C",
+  simple_inductor: "L",
+  simple_diode: "D",
+  simple_chip: "X",
 }
 
 /** Extract component value from v0.1 component (spread onto source_component_base) */
@@ -109,6 +115,14 @@ function getValueFromV11Nir(nir: NirV11, ref: string): string | null {
   return null
 }
 
+function getAcMagnitudeFromV11Nir(nir: NirV11, ref: string): string | null {
+  const comp = nir.components.find((c) => c.ref === ref)
+  if (comp && typeof comp.ac_magnitude === "string" && comp.ac_magnitude.length > 0) {
+    return comp.ac_magnitude
+  }
+  return null
+}
+
 /** Detect NIR schema version */
 function detectNirVersion(nir: NirInput): "v0.1" | "v1.1" | "unknown" {
   if (nir && typeof nir === "object") {
@@ -119,24 +133,40 @@ function detectNirVersion(nir: NirInput): "v0.1" | "v1.1" | "unknown" {
   return "unknown"
 }
 
+export interface NetlistResult {
+  netlist: string
+  nodeMap: Record<string, number>
+  warnings: string[]
+}
+
+export interface DcSweepConfig {
+  sourceName: string
+  start: number
+  stop: number
+  step: number
+}
+
 /**
  * Convert Circuit JSON + NIR to a SPICE netlist.
  *
  * @param circuitJson - Output from serializeNir() (AnyCircuitElement[])
  * @param nir - Original NIR input to serializeNir() (needed for v1.1 values)
+ * @param opts - Optional: analysisType ("tran"|"op"|"dc"), dcSweep config
  * @returns NetlistResult with netlist string, node map, and any warnings
  */
 export function netlistFromCircuitJson(
   circuitJson: AnyCircuitElement[],
   nir: NirInput,
+  opts?: { analysisType?: "tran" | "op" | "dc"; dcSweep?: DcSweepConfig },
 ): NetlistResult {
   const warnings: string[] = []
 
   // ----------------------------------------------------------------------- //
-  // 1. Collect source_component_base elements (the components)
+  // 1. Collect components (source_component_base for v0.1, source_component
+  //    for v1.1)
   // ----------------------------------------------------------------------- //
   const components = circuitJson.filter(
-    (el) => el.type === "source_component_base",
+    (el) => el.type === "source_component_base" || el.type === "source_component",
   ) as AnyCircuitElement[]
 
   // ----------------------------------------------------------------------- //
@@ -146,6 +176,15 @@ export function netlistFromCircuitJson(
     (el) => el.type === "source_net",
   ) as AnyCircuitElement[]
 
+  // Build source_net_id -> name lookup (v1.1 uses source_net_id, name is
+  // the human-readable label)
+  const netIdToName = new Map<string, string>()
+  for (const net of nets) {
+    const id = String(net.source_net_id ?? "")
+    const name = String(net.name ?? net.source_net_id ?? "").replace(/^net_/, "")
+    if (id) netIdToName.set(id, name)
+  }
+
   // ----------------------------------------------------------------------- //
   // 3. Collect source_trace elements (connectivity: component pin -> net)
   // ----------------------------------------------------------------------- //
@@ -154,7 +193,32 @@ export function netlistFromCircuitJson(
   ) as AnyCircuitElement[]
 
   // ----------------------------------------------------------------------- //
-  // 4. Assign SPICE node numbers to nets
+  // 4. Collect source_port elements (port metadata: which component + pin)
+  // ----------------------------------------------------------------------- //
+  const portElements = circuitJson.filter(
+    (el) => el.type === "source_port",
+  ) as AnyCircuitElement[]
+
+  // Build source_port_id -> { ref, pin_number } lookup
+  const portToRefPin = new Map<string, { ref: string; pin: string }>()
+  const compIdToRef = new Map<string, string>()
+  for (const comp of components) {
+    const id = String(comp.source_component_id ?? "")
+    const ref = String(comp.name ?? "").trim()
+    if (id && ref) compIdToRef.set(id, ref)
+  }
+  for (const port of portElements) {
+    const portId = String(port.source_port_id ?? "")
+    const compId = String(port.source_component_id ?? "")
+    const ref = compIdToRef.get(compId) ?? ""
+    const pin = String(port.pin_number ?? "")
+    if (portId && ref && pin) {
+      portToRefPin.set(portId, { ref, pin })
+    }
+  }
+
+  // ----------------------------------------------------------------------- //
+  // 5. Assign SPICE node numbers to nets
   //    - Ground nets (is_ground) -> node 0
   //    - Other nets -> sequential integers starting at 1
   // ----------------------------------------------------------------------- //
@@ -180,7 +244,7 @@ export function netlistFromCircuitJson(
   // Also check for nets referenced in traces but not in source_net list
   for (const trace of traces) {
     for (const netId of (trace.connected_source_net_ids as string[]) ?? []) {
-      const netName = netId.replace(/^net_/, "")
+      const netName = netIdToName.get(netId) ?? netId.replace(/^net_/, "")
       if (!(netName in nodeMap)) {
         // Not a declared power/ground net - assign a node number
         nodeMap[netName] = nextNode++
@@ -190,9 +254,9 @@ export function netlistFromCircuitJson(
   }
 
   // ----------------------------------------------------------------------- //
-  // 5. Build pin-to-net mapping from traces
-  //    trace: connected_source_port_ids like ["R1_source_port_1"]
-  //           connected_source_net_ids like ["net_VBAT"]
+  // 6. Build pin-to-net mapping from traces
+  //    v0.1 portId format: "R1_source_port_1" -> ref="R1", pin="1"
+  //    v1.1 portId format: "source_port_14"   -> lookup via source_port element
   // ----------------------------------------------------------------------- //
   // Map: "R1#1" -> netName
   const pinToNet = new Map<string, string>()
@@ -201,14 +265,20 @@ export function netlistFromCircuitJson(
     const portIds = (trace.connected_source_port_ids as string[]) ?? []
     const netIds = (trace.connected_source_net_ids as string[]) ?? []
     if (portIds.length === 0 || netIds.length === 0) continue
-    const netName = netIds[0].replace(/^net_/, "")
+    const netName = netIdToName.get(netIds[0]) ?? netIds[0].replace(/^net_/, "")
     for (const portId of portIds) {
-      // portId format: "R1_source_port_1" -> ref="R1", pin="1"
-      const match = portId.match(/^(.+)_source_port_(\d+)$/)
-      if (match) {
-        const ref = match[1]
-        const pin = match[2]
+      // Try v0.1 format first: "R1_source_port_1"
+      const v01Match = portId.match(/^(.+)_source_port_(\d+)$/)
+      if (v01Match) {
+        const ref = v01Match[1]
+        const pin = v01Match[2]
         pinToNet.set(`${ref}#${pin}`, netName)
+        continue
+      }
+      // Try v1.1 format: lookup via source_port element
+      const resolved = portToRefPin.get(portId)
+      if (resolved) {
+        pinToNet.set(`${resolved.ref}#${resolved.pin}`, netName)
       }
     }
   }
@@ -220,11 +290,22 @@ export function netlistFromCircuitJson(
   const isV11 = nirVersion === "v1.1"
   const v11Nir = isV11 ? (nir as NirV11) : null
 
+  // v1.1 NIR ref -> component_type lookup (tscircuit may squash to "simple_chip")
+  const nirCompTypeByRef = new Map<string, string>()
+  if (v11Nir) {
+    for (const c of v11Nir.components) {
+      if (c.ref && c.component_type) {
+        nirCompTypeByRef.set(c.ref, c.component_type.toLowerCase())
+      }
+    }
+  }
+
   // ----------------------------------------------------------------------- //
   // 7. Emit SPICE element lines
   // ----------------------------------------------------------------------- //
   const spiceLines: string[] = []
   const refCounts: Record<string, number> = {}
+  const analysisType = opts?.analysisType ?? "tran"
 
   // Title line
   spiceLines.push("* Open_Forge generated netlist (from Circuit JSON + NIR)")
@@ -232,7 +313,26 @@ export function netlistFromCircuitJson(
 
   for (const comp of components) {
     const ref = String(comp.name ?? "").trim()
-    const compType = String(comp.component_type ?? comp.type ?? "").toLowerCase()
+    let compType = String(
+      comp.component_type ?? comp.ftype ?? "",
+    ).toLowerCase()
+
+    // Infer type from properties for v0.1 source_component_base elements
+    if (!compType) {
+      if (comp.resistance != null) compType = "resistor"
+      else if (comp.capacitance != null) compType = "capacitor"
+      else if (comp.inductance != null) compType = "inductor"
+      else if (comp.voltage != null && (comp.name ?? "").startsWith("V")) compType = "voltage_source"
+      else compType = String(comp.type ?? "").toLowerCase()
+    }
+
+    // v1.1 override: tscircuit may squash everything to "simple_chip", but the
+    // NIR's component_type carries the real role (voltage_source, resistor, etc.)
+    if (isV11 && ref) {
+      const nirType = nirCompTypeByRef.get(ref)
+      if (nirType) compType = nirType
+    }
+
     const footprint = String(comp.footprint ?? "").trim()
 
     if (!ref) {
@@ -245,12 +345,17 @@ export function netlistFromCircuitJson(
     refCounts[prefix] = count
     const spiceRef = `${prefix}${count}`
 
-    // Get value
-    let value: string | null = null
-    if (isV11 && v11Nir) {
+    // Get value: try source_component properties first (v1.1 ftype components
+    // carry resistance/capacitance directly), then v1.1 NIR lookup, then v0.1
+    let value: string | null = getValueFromV01Component(comp)
+    if (!value && isV11 && v11Nir) {
       value = getValueFromV11Nir(v11Nir, ref)
-    } else {
-      value = getValueFromV01Component(comp)
+    }
+
+    // Get AC magnitude from NIR (only meaningful for AC analysis)
+    let acMag: string | null = null
+    if (isV11 && v11Nir) {
+      acMag = getAcMagnitudeFromV11Nir(v11Nir, ref)
     }
 
     // Get connected nets for this component's pins
@@ -266,17 +371,20 @@ export function netlistFromCircuitJson(
 
     // Emit based on component type
     switch (compType) {
-      case "resistor": {
+      case "resistor":
+      case "simple_resistor": {
         const rval = value ?? "1k"
         spiceLines.push(`${spiceRef} ${node1} ${node2} ${rval}`)
         break
       }
-      case "capacitor": {
+      case "capacitor":
+      case "simple_capacitor": {
         const cval = value ?? "1u"
         spiceLines.push(`${spiceRef} ${node1} ${node2} ${cval}`)
         break
       }
       case "inductor":
+      case "simple_inductor":
       case "ferrite_bead": {
         const lval = value ?? "1u"
         // Ferrite bead: model as inductor with series resistance
@@ -290,6 +398,7 @@ export function netlistFromCircuitJson(
         break
       }
       case "diode":
+      case "simple_diode":
       case "tvs_diode_array": {
         // Simple diode model - would need .model card for real simulation
         spiceLines.push(`${spiceRef} ${node1} ${node2} DMOD`)
@@ -298,7 +407,17 @@ export function netlistFromCircuitJson(
       }
       case "voltage_source": {
         const vval = value ?? "1"
-        spiceLines.push(`${spiceRef} ${node1} ${node2} DC ${vval}`)
+        if (analysisType === "ac") {
+          const acVal = acMag ?? "1"
+          spiceLines.push(`${spiceRef} ${node1} ${node2} DC ${vval} AC ${acVal}`)
+        } else if (analysisType === "fft") {
+          // SIN source for FFT: SIN(0 <amplitude> <freq>)
+          spiceLines.push(`${spiceRef} ${node1} ${node2} SIN(0 ${vval} 1k)`)
+        } else if (analysisType === "tran") {
+          spiceLines.push(`${spiceRef} ${node1} ${node2} PULSE(0 ${vval} 0 1n 1n 10m 20m)`)
+        } else {
+          spiceLines.push(`${spiceRef} ${node1} ${node2} DC ${vval}`)
+        }
         break
       }
       case "current_source": {
@@ -317,12 +436,155 @@ export function netlistFromCircuitJson(
   }
 
   // ----------------------------------------------------------------------- //
-  // 8. Add common simulation commands
+  // 8. Emit implicit voltage sources for power/signal nets that lack one
+  //    Many NIRs (especially v1.1) represent VCC/GND/VIN as nets rather
+  //    than explicit voltage_source components.  For simulation to work we
+  //    need V-elements driving those nets.  Emit a warning when the actual
+  //    voltage value is unknown — never fabricate a silent placeholder.
+  // ----------------------------------------------------------------------- //
+  const groundNets = new Set<string>()
+  for (const net of nets) {
+    if (net.is_ground === true) {
+      groundNets.add(String(net.name ?? net.source_net_id ?? "").replace(/^net_/, ""))
+    }
+  }
+  // The canonical ground name (GND or the first ground net found)
+  const gndName = groundNets.size > 0 ? [...groundNets][0] : "GND"
+  if (!(gndName in nodeMap)) {
+    nodeMap[gndName] = 0
+  }
+
+  // Track which nets already have a V-element driving them
+  const netsWithVoltageSource = new Set<string>()
+  for (const line of spiceLines) {
+    // Match V<n> <node+> <node-> DC <val>  or  V<n> <node+> <node-> <val>
+    const vMatch = line.match(/^V\d+\s+(\S+)\s+(\S+)/)
+    if (vMatch) {
+      netsWithVoltageSource.add(vMatch[1])
+    }
+  }
+
+  let implicitVCount = (refCounts["V"] ?? 0)
+
+  // Only add implicit voltage sources for genuine external inputs and supply
+  // rails.  Internal circuit nodes (feedback, coupling caps, reference
+  // dividers, op-amp outputs) must NEVER get voltage sources — doing so
+  // would short the output and break simulation.
+  //
+  // Heuristic for v1.1 NIR:
+  //   1. Net connects to an *input* header/connector → external stimulus
+  //   2. Net connects to an IC power pin (VCC/VDD/V+/VEE) → supply rail
+  //   3. Everything else → do NOT add a source; emit a warning if ambiguous
+  //
+  // For v0.1: fall back to is_power flag on source_net elements.
+  const IC_POWER_PIN_RE = /^(VCC|VDD|V\+|VEE|V-|VS\+|VS-|AVCC|DVCC|PVCC)/i
+  const INPUT_HEADER_RE = /input_header|signal_gen|function_gen|pulse_source|voltage_source/i
+  const OUTPUT_HEADER_RE = /output_header|probe|measure/i
+
+  if (v11Nir) {
+    for (const entry of v11Nir.netlist) {
+      const netName = entry.net_name
+      if (groundNets.has(netName)) continue
+      if (netsWithVoltageSource.has(netName)) continue
+      const nodePos = nodeMap[netName] ?? 0
+      if (nodePos === 0) continue
+
+      const connectsToInputHeader = entry.connections.some(
+        (c) => INPUT_HEADER_RE.test(c.ref),
+      )
+      const connectsToOutputHeader = entry.connections.some(
+        (c) => OUTPUT_HEADER_RE.test(c.ref),
+      )
+      const connectsToIcPowerPin = entry.connections.some(
+        (c) => IC_POWER_PIN_RE.test(c.pin_name),
+      )
+
+      if (connectsToInputHeader) {
+        // External input signal — needs a driving voltage source
+        implicitVCount++
+        const spiceRef = `V${implicitVCount}`
+        warnings.push(
+          `Input net '${netName}' (connected to external source) has no explicit voltage source; ` +
+          `emitting ${spiceRef} with UNKNOWN voltage — set the correct value before simulating`,
+        )
+        spiceLines.push(`* WARNING: ${spiceRef} voltage is unknown — set before simulating`)
+        spiceLines.push(`${spiceRef} ${nodePos} 0 DC 0`)
+      } else if (connectsToIcPowerPin && !connectsToOutputHeader) {
+        // Supply rail driving IC power pins — needs a voltage source
+        implicitVCount++
+        const spiceRef = `V${implicitVCount}`
+        warnings.push(
+          `Supply net '${netName}' (feeding IC power pin) has no explicit voltage source; ` +
+          `emitting ${spiceRef} with UNKNOWN voltage — set the correct value before simulating`,
+        )
+        spiceLines.push(`* WARNING: ${spiceRef} voltage is unknown — set before simulating`)
+        spiceLines.push(`${spiceRef} ${nodePos} 0 DC 0`)
+      } else if (connectsToOutputHeader) {
+        // Output net — driven by the circuit, never add a source
+        warnings.push(
+          `Output net '${netName}' is driven by the circuit — no voltage source added`,
+        )
+      }
+      // All other nets (internal nodes) — silently skipped, no source needed
+    }
+  } else {
+    // v0.1 fallback: emit sources for power nets (is_power && !is_ground)
+    // that also connect to an IC power pin or header
+    for (const net of nets) {
+      const netName = String(net.name ?? net.source_net_id ?? "").replace(/^net_/, "")
+      if (net.is_ground === true) continue
+      if (net.is_power !== true) continue
+      if (netsWithVoltageSource.has(netName)) continue
+      const nodePos = nodeMap[netName] ?? 0
+      if (nodePos === 0) continue
+      implicitVCount++
+      const spiceRef = `V${implicitVCount}`
+      warnings.push(
+        `Power net '${netName}' has no explicit voltage source; ` +
+        `emitting ${spiceRef} with UNKNOWN voltage — set the correct value before simulating`,
+      )
+      spiceLines.push(`* WARNING: ${spiceRef} voltage is unknown — set before simulating`)
+      spiceLines.push(`${spiceRef} ${nodePos} 0 DC 0`)
+    }
+  }
+
+  // ----------------------------------------------------------------------- //
+  // 9. Add simulation commands based on analysis type
   // ----------------------------------------------------------------------- //
   spiceLines.push("")
-  spiceLines.push("* --- Simulation commands (user should customize) ---")
-  spiceLines.push(".op")
-  spiceLines.push(".tran 1m 10m")
+  spiceLines.push("* --- Simulation commands ---")
+
+  switch (analysisType) {
+    case "op":
+      spiceLines.push(".op")
+      break
+    case "dc": {
+      const dc = opts?.dcSweep
+      if (dc) {
+        spiceLines.push(`.dc ${dc.sourceName} ${dc.start} ${dc.stop} ${dc.step}`)
+      } else {
+        const firstVSource = spiceLines.find(l => l.startsWith("V"))
+        const vName = firstVSource ? firstVSource.split(/\s/)[0] : "V1"
+        spiceLines.push(`.dc ${vName} 0 10 0.1`)
+      }
+      break
+    }
+    case "ac":
+      spiceLines.push(".ac dec 10 1 1meg")
+      break
+    case "fft": {
+      // FFT needs a transient simulation first, then .four analysis
+      // Use SIN source for periodic signal (set in voltage_source case)
+      spiceLines.push(".tran 10u 10m")
+      // .four <freq> <var> — fundamental freq = 1kHz, analyze v(2)
+      spiceLines.push(".four 1k v(2)")
+      break
+    }
+    case "tran":
+    default:
+      spiceLines.push(".tran 1m 10m")
+      break
+  }
   spiceLines.push(".end")
 
   return {

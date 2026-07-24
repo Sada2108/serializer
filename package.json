@@ -19,10 +19,10 @@
     "test:serializer": "bun test serializer.test.ts"
   },
   "dependencies": {
+    "@tscircuit/capacity-autorouter": "0.0.692",
     "circuit-json": "^0.0.426",
-    "circuit-to-svg": "^0.0.369",
     "circuit-json-to-spice": "^0.0.40",
-    "@tscircuit/schematic-viewer": "^0.0.0"
+    "circuit-to-svg": "^0.0.369"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",

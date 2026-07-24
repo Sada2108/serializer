@@ -142,10 +142,14 @@ describe("serializeNir v1.1 (instrumentation_amp_001)", () => {
     const pbcs = cj.filter((el: any) => el.type === "pcb_component")
     const schs = cj.filter((el: any) => el.type === "schematic_component")
     const srcs = cj.filter((el: any) => el.type === "source_component_base")
+    const groundNets = (instrumentationAmpNir.netlist || []).filter(
+      (n: any) => n.net_type === "ground"
+    )
     const n = instrumentationAmpNir.components.length
     expect(n).toBe(15)
     expect(pbcs.length).toBe(n)
-    expect(schs.length).toBe(n)
+    // schematic_components = NIR components + ground nets (power nets are text labels only)
+    expect(schs.length).toBe(n + groundNets.length)
     expect(srcs.length).toBe(n)
   })
 

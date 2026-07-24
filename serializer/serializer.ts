@@ -43,6 +43,8 @@ import type {
   NirV11,
 } from "./fixtures"
 import { circuitJsonToKicadPcb } from "./kicadPcbWriter"
+import { snapCircuitJsonTracesToManhattan, enforceTracePadClearance } from "./pcbRouting"
+import { lookupSymbol, getGroundSymbolName, logMissingSymbol } from "./symbolLibrary"
 
 // --------------------------------------------------------------------------- //
 // Types
@@ -248,7 +250,7 @@ const SEMANTIC_TO_PASSIVE: Record<string, "pin1" | "pin2"> = {
   "NEGATIVE": "pin2", "OUT": "pin2", "CATHODE": "pin2", "K": "pin2", "N": "pin2", "PIN2": "pin2",
 }
 
-function generateTscircuitJsx(nir: NirV11): string {
+export function generateTscircuitJsx(nir: NirV11): string {
   const { components, netlist, board_spec } = nir
 
   const compRefSet = new Set(components.map(c => c.ref))
@@ -453,6 +455,19 @@ function generateCircuitJsonFromNir(nir: NirV11): AnyCircuitElement[] {
     for (const conn of net.connections) {
       out.push(emitSourceTrace(net, conn))
     }
+    if (net.net_type === "ground" || net.net_type === "power") {
+      let sx = 10
+      let sy = 10
+      if (net.connections.length > 0) {
+        const firstRef = net.connections[0].ref
+        const comp = nir.components.find(c => c.ref === firstRef)
+        if (comp && comp.position && typeof comp.position.x_mm === "number" && typeof comp.position.y_mm === "number") {
+          sx = comp.position.x_mm + (net.net_type === "ground" ? 0 : 3)
+          sy = comp.position.y_mm + (net.net_type === "ground" ? 4 : -3)
+        }
+      }
+      out.push(...emitPowerSymbol(net, sx, sy))
+    }
   }
 
   return out
@@ -558,9 +573,14 @@ function emitSchematicComponent(
   const isIc = isIC(comp.component_type)
   const elements: AnyCircuitElement[] = []
 
-  const bodySize = isIc
-    ? { width: SYMBOL_IC_W, height: SYMBOL_IC_H + Math.max(0, Math.ceil(pinCount / 2) - 4) }
-    : { width: SYMBOL_DISCRETE_W, height: SYMBOL_DISCRETE_H }
+  const sym = lookupSymbol(comp.component_type)
+  if (!sym) logMissingSymbol(comp.component_type)
+
+  const bodySize = sym
+    ? { width: sym.width, height: sym.height }
+    : isIc
+      ? { width: SYMBOL_IC_W, height: SYMBOL_IC_H + Math.max(0, Math.ceil(pinCount / 2) - 4) }
+      : { width: SYMBOL_DISCRETE_W, height: SYMBOL_DISCRETE_H }
 
   // Parent schematic_component
   elements.push({
@@ -569,12 +589,15 @@ function emitSchematicComponent(
     source_component_id: `${comp.ref}_source`,
     center: { x, y },
     size: bodySize,
-    is_box_with_pins: !["resistor", "capacitor", "diode", "tvs_diode_array"].includes(comp.component_type),
+    is_box_with_pins: sym ? true : !["resistor", "capacitor", "diode", "tvs_diode_array"].includes(comp.component_type),
+    symbol_name: sym?.symbolName,
     symbol_display_value: typeof comp.value === "string" ? comp.value : undefined,
   } as AnyCircuitElement)
 
-  // Symbol geometry
-  elements.push(...makeSymbolGeometry(comp, refSchId, x, y, bodySize, pinCount))
+  // Symbol geometry — only emit custom primitives when no library symbol
+  if (!sym) {
+    elements.push(...makeSymbolGeometry(comp, refSchId, x, y, bodySize, pinCount))
+  }
 
   // Ref label (orphan text so it renders for all types)
   const bodyH = bodySize.height
@@ -751,6 +774,43 @@ function emitSourceNet(net: NirV11NetlistEntry): AnyCircuitElement {
   } as AnyCircuitElement
 }
 
+function emitPowerSymbol(
+  net: NirV11NetlistEntry,
+  x: number,
+  y: number,
+): AnyCircuitElement[] {
+  const elements: AnyCircuitElement[] = []
+  const schId = `net_${net.net_name}_sch`
+  const sourceId = `net_${net.net_name}_source`
+
+  if (net.net_type === "ground") {
+    // Ground: use standard ground_down symbol from schematic-symbols
+    elements.push({
+      type: "schematic_component",
+      schematic_component_id: schId,
+      source_component_id: sourceId,
+      center: { x, y },
+      size: { width: 2, height: 2 },
+      is_box_with_pins: true,
+      symbol_name: getGroundSymbolName(),
+    } as AnyCircuitElement)
+  } else if (net.net_type === "power") {
+    // Power nets (VIN, VCC, etc.): plain text label only, no graphic shape
+    elements.push({
+      type: "schematic_text",
+      schematic_text_id: `${schId}_label`,
+      text: net.net_name,
+      font_size: 1.0,
+      position: { x, y },
+      rotation: 0,
+      anchor: "center",
+      color: "#c00",
+    } as AnyCircuitElement)
+  }
+
+  return elements
+}
+
 function emitSourceTrace(
   net: NirV11NetlistEntry,
   conn: { ref: string; pin_name: string; pin_number: string | number },
@@ -898,8 +958,10 @@ export async function serializeNirAsync(nir: Nir | unknown): Promise<SerializerO
   const circuitJson = await nirToCircuitJsonAsync(nir)
   const { svg, viewerUsed } = renderCircuitJson(circuitJson)
   const hasPcbBoard = circuitJson.some((e: any) => e.type === "pcb_board")
-  const kicadPcb = hasPcbBoard ? circuitJsonToKicadPcb(circuitJson) : undefined
-  return { circuitJson, svg, viewerUsed, kicadPcb }
+  const snapped = hasPcbBoard ? snapCircuitJsonTracesToManhattan(circuitJson) : circuitJson
+  const cleared = hasPcbBoard ? enforceTracePadClearance(snapped) : snapped
+  const kicadPcb = hasPcbBoard ? circuitJsonToKicadPcb(cleared) : undefined
+  return { circuitJson: cleared, svg, viewerUsed, kicadPcb }
 }
 
 export { serializeNir as serializeNirSync }

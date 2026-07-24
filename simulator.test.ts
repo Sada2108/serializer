@@ -206,7 +206,11 @@ describe("netlistFromCircuitJson", () => {
     }
     const result = netlistFromCircuitJson(circuitJson, nir)
     expect(result.netlist).toContain("V1")
-    expect(result.netlist).toContain("DC 5")
+    // Default analysis is TRAN, so voltage source uses PULSE
+    expect(result.netlist).toContain("PULSE(0 5")
+    // Test with OP analysis
+    const resultOp = netlistFromCircuitJson(circuitJson, nir, { analysisType: "op" })
+    expect(resultOp.netlist).toContain("DC 5")
   })
 })
 

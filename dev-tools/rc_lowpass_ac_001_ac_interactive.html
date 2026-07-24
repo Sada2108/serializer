@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SPICE Simulator — rc_lowpass_ac_001</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { margin:0; padding:0; background:#f4f4f4; color:#222; }
+  .toolbar { background:#1f1f1f; color:#ddd; padding:6px 10px; display:flex; gap:14px; align-items:center; font-size:12px; }
+  .toolbar label { display:flex; align-items:center; gap:4px; cursor:pointer; }
+  .toolbar select, .toolbar button { background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; padding:4px 6px; font-size:12px; border-radius:3px; }
+  .toolbar button { cursor:pointer; }
+  .toolbar input[type="number"] { width:46px; padding:2px 4px; font-size:12px; background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; border-radius:3px; }
+  .toolbar .sep { width:1px; height:18px; background:#444; }
+  .layout { display:flex; flex-direction:column; height:calc(100vh - 32px); }
+  .middle { display:flex; flex:1; min-height:0; }
+  .chart-wrap { flex:1; min-width:0; background:#fff; position:relative; border:1px solid #ddd; border-radius:3px; margin:6px; overflow:hidden; }
+  .right { width:340px; min-width:340px; max-width:340px; background:#fff; border:1px solid #ddd; border-radius:3px; margin:6px 6px 6px 0; overflow:auto; }
+  .right h3 { margin:0; padding:6px 10px; font-size:12px; color:#666; border-bottom:1px solid #ddd; background:#fafafa; text-transform:uppercase; letter-spacing:.5px; }
+  .signal-list table { border-collapse:collapse; width:100%; font-size:12px; }
+  .signal-list th { background:#f7f7f7; padding:4px 6px; text-align:left; font-weight:600; color:#555; border-bottom:1px solid #ddd; position:sticky; top:0; }
+  .signal-list td { padding:3px 6px; border-bottom:1px solid #f2f2f2; font-family:ui-monospace, Menlo, Consolas, monospace; }
+  .signal-list td.color-cell { width:18px; padding:3px 4px; }
+  .signal-list .swatch { display:inline-block; width:12px; height:12px; border-radius:2px; vertical-align:middle; }
+  .signal-list input[type="checkbox"] { margin:0; cursor:pointer; }
+  .netlist-panel { border-top:1px solid #ddd; }
+  .netlist-panel pre { margin:0; padding:8px 10px; font-size:11px; line-height:1.5; overflow:auto; max-height:300px; background:#fafafa; color:#333; white-space:pre-wrap; word-break:break-all; }
+  .netlist-toggle { padding:4px 8px; font-size:12px; cursor:pointer; background:#2b2b2b; color:#eee; border:1px solid #3a3a3a; border-radius:3px; margin:6px; }
+  .warn-banner { background:#fff3cd; color:#856404; padding:8px 12px; font-size:12px; border-bottom:1px solid #ffc107; }
+  .slider-panel { border-bottom:1px solid #ddd; background:#fafafa; padding:8px 12px; display:none; }
+  .slider-panel.visible { display:block; }
+  .slider-panel h3 { margin:0 0 6px; font-size:11px; color:#666; text-transform:uppercase; letter-spacing:.5px; }
+  .slider-row { display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:12px; }
+  .slider-row label { min-width:40px; font-weight:600; color:#333; }
+  .slider-row input[type="range"] { flex:1; height:4px; }
+  .slider-row .val { min-width:80px; text-align:right; font-family:ui-monospace,Menlo,Consolas,monospace; color:#555; font-size:11px; }
+  .slider-row .unit { color:#999; font-size:11px; }
+  .slider-panel .server-note { font-size:10px; color:#999; margin-top:4px; }
+  .slider-panel .server-note.error { color:#c00; }
+  .slider-loading { display:inline-block; width:10px; height:10px; border:2px solid #ccc; border-top-color:#333; border-radius:50%; animation:spin .6s linear infinite; margin-left:6px; vertical-align:middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <a id="backToSchematic" href="rc_lowpass_ac_001_schematic.html" style="color:#4fc3f7;text-decoration:none;font-weight:600;margin-right:8px" title="Back to Schematic Editor">\u2190 Schematic</a>
+    <div class="sep"></div>
+    <label>Analysis:
+      <select id="analysisType" onchange="switchAnalysis()">
+        <option value="tran" >Transient (TRAN)</option>
+        <option value="op" >Operating Point (OP)</option>
+        <option value="dc" >DC Sweep (DC)</option>
+        <option value="ac" selected>AC Analysis (AC)</option>
+        <option value="pz" disabled>Pole-Zero (PZ)</option>
+        <option value="noise" disabled>Noise (NOISE)</option>
+        <option value="sp" disabled>S-Parameter (SP)</option>
+        <option value="fft" >FFT (Fourier)</option>
+      </select>
+    </label>
+    <div class="sep"></div>
+    <label>Start:
+      <input type="number" id="tStartInput" value="1000.000" step="0.01">
+    </label>
+    <label>End:
+      <input type="number" id="tEndInput" value="1000000000.000" step="0.01">
+    </label>
+    <button onclick="applyTimeRange()">Apply</button>
+    <div class="sep"></div>
+    <label><input type="checkbox" id="showGrid" checked onchange="toggleGrid()"> Grid</label>
+    <label><input type="checkbox" id="showLegend" checked onchange="toggleLegend()"> Legend</label>
+    <div class="sep"></div>
+    <span style="color:#999">Fixture: rc_lowpass_ac_001</span>
+  </div>
+
+  
+
+  <div class="slider-panel" id="sliderPanel">
+    <h3>Component Values <span id="sliderLoading"></span></h3>
+    <div id="sliderContainer"></div>
+    <div class="server-note" id="serverNote">Requires <code>sim_server.ts</code> running locally (<code>bun run sim_server.ts</code>)</div>
+  </div>
+
+  <div class="layout">
+    <div class="middle">
+      <div class="chart-wrap" id="chart"></div>
+      <div class="right">
+        <h3>Signals</h3>
+        <div class="signal-list">
+          <table>
+            <thead><tr><th></th><th>Signal</th><th>Type</th><th>Max</th><th>Min</th></tr></thead>
+            <tbody id="signalTableBody"></tbody>
+          </table>
+        </div>
+        <div class="netlist-panel">
+          <button class="netlist-toggle" onclick="toggleNetlist()">Show / Hide Netlist</button>
+          <pre id="netlistPre" style="display:none">* Open_Forge generated netlist (from Circuit JSON + NIR)
+
+V1 1 0 DC 5 AC 1
+R1 1 2 1k
+C1 2 0 1u
+
+* --- Simulation commands ---
+.ac dec 10 1 1meg
+.end</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function() {
+  var probes = [{"name":"frequency |H(f)| (dB)","color":"#1f77b4","values":[0,1.9999999999999991,4.000000000000003,6.000000000000002,8.000000000000004,10.000000000000002,12.000000000000004,14.000000000000004,16.000000000000004,18.000000000000004,20.000000000000007,22.000000000000007,24.000000000000007,26.000000000000007,28.000000000000007,30.000000000000007,32.000000000000014,34.000000000000014,36.00000000000001,38.000000000000014,40.00000000000001,42.000000000000014,44.000000000000014,46.000000000000014,48.000000000000014,50.000000000000014,52.00000000000002,54.000000000000014,56.000000000000014,58.000000000000014,60.000000000000014,62.00000000000002,64.00000000000003,66.00000000000003,68.00000000000003,70.00000000000001,72.00000000000001,74.00000000000003,76.00000000000003,78.00000000000001,80.00000000000001,82.00000000000003,84.00000000000003,86.00000000000003,88.00000000000003,90.00000000000001,92.00000000000003,94.00000000000003,96.00000000000003,98.00000000000003,100.00000000000001,102.00000000000003,104.00000000000004,106.00000000000003,108.00000000000003,110.00000000000003,112.00000000000003,114.00000000000004,116.00000000000003,118.00000000000004,120.00000000000003],"type":"magnitude"},{"name":"frequency phase (deg)","color":"#1f77b4","values":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"type":"phase"},{"name":"v(1) |H(f)| (dB)","color":"#d62728","values":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"type":"magnitude"},{"name":"v(1) phase (deg)","color":"#d62728","values":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"type":"phase"},{"name":"v(2) |H(f)| (dB)","color":"#2ca02c","values":[-0.00017144920495022439,-0.00027172554073056775,-0.00043064808013415056,-0.0006825114191687985,-0.0010816579932778124,-0.0017141875471855077,-0.002716490661556924,-0.004304560361990663,-0.00682029231546433,-0.010804476076628135,-0.017111504344580936,-0.027088746353660497,-0.042854807207616336,-0.06772567832421489,-0.10685390507945099,-0.16815476627912335,-0.2635717218209948,-0.4106301011105509,-0.6339581903312119,-0.9659441829433689,-1.4450701162052892,-2.1103793548057044,-2.9921367810405473,-4.102142444313462,-5.429398657226574,-6.944158017759019,-8.607515892493806,-10.380846186435313,-12.23149019210966,-14.134539621515376,-16.07223526580554,-18.032458941335847,-20.007173026776375,-21.991142608675535,-23.9809975685203,-25.97458426569883,-27.970532866801186,-29.967974660906584,-31.966359766411504,-33.965340527812415,-35.964697308632886,-37.96429141574502,-39.964035295126266,-41.96387368616872,-43.96377171471566,-45.96370737384647,-47.963666777012044,-49.963641161945944,-51.96362499985411,-53.96361480223263,-55.96360836795614,-57.96360430819722,-59.96360174666056,-61.963600130439424,-63.96359911067251,-65.96359846724296,-67.96359806126632,-69.96359780511236,-71.96359764349013,-73.96359754151338,-75.96359747717041],"type":"magnitude"},{"name":"v(2) phase (deg)","color":"#2ca02c","values":[-0.3599952627020995,-0.45320369622487205,-0.5705426904387176,-0.7182568063508382,-0.9042040436726078,-1.1382701830745394,-1.4328870157873053,-1.8036779910651977,-2.270257577405001,-2.857210857795578,-3.5952737798681773,-4.522714434350973,-5.686866950010379,-7.14566466802581,-8.968810829221326,-11.237840984624162,-14.043691001537258,-17.47948722132516,-21.625463662391578,-26.52337738915093,-32.14190763534209,-38.344214171595105,-44.87993681672686,-51.42188736297687,-57.64135696386779,-63.28424790794938,-68.20950016146016,-72.38244928400346,-75.84283419365033,-78.67000426564341,-80.95693892096233,-82.79481804813732,-84.26558300695538,-85.43937670602962,-86.37454430298266,-87.1187796579127,-87.71065335981565,-88.18115016732318,-88.55505711725952,-88.85215127239898,-89.08818633038618,-89.27569809265921,-89.42465523433103,-89.54298173907154,-89.63697465029783,-89.7116372907739,-89.7709446445006,-89.81805450610163,-89.85547537773476,-89.88519992206822,-89.90881101171665,-89.9275659893403,-89.94246360886672,-89.95429721432929,-89.96369698409477,-89.97116348803674,-89.97709434364288,-89.98180539006293,-89.98554750742791,-89.98851997699799,-89.99088109354918],"type":"phase"},{"name":"i(v1) |H(f)| (dB)","color":"#ff7f0e","values":[-104.03657408204265,-102.03667435837843,-100.03683328091783,-98.03708514425686,-96.03748429083097,-94.03811682038487,-92.03911912349925,-90.0407071931997,-88.04322292515316,-86.04720710891434,-84.05351413718228,-82.06349137919135,-80.07925744004531,-78.1041283111619,-76.14325653791714,-74.20455739911682,-72.29997435465869,-70.44703273394825,-68.67036082316889,-67.00234681578105,-65.48147274904298,-64.1467819876434,-63.028539413878235,-62.13854507715115,-61.46580129006426,-60.9805606505967,-60.643918525331486,-60.417248819273,-60.26789282494734,-60.170942254353065,-60.108637898643224,-60.068861574173525,-60.043575659614056,-60.02754524151322,-60.01740020135798,-60.0109868985365,-60.00693549963887,-60.00437729374426,-60.002762399249185,-60.0017431606501,-60.001099941470564,-60.000694048582695,-60.000437927963944,-60.000276319006396,-60.000174347553326,-60.000110006684146,-60.000069409849715,-60.000043794783615,-60.00002763269179,-60.000017435070305,-60.000011000793805,-60.0000069410349,-60.000004379498236,-60.000002763277095,-60.00000174351018,-60.00000110008063,-60.00000069410398,-60.00000043795002,-60.00000027632779,-60.00000017435105,-60.000000110008074],"type":"magnitude"},{"name":"i(v1) phase (deg)","color":"#ff7f0e","values":[-90.35999526270388,-90.45320369622455,-90.57054269043876,-90.71825680635054,-90.9042040436726,-91.13827018307488,-91.43288701578757,-91.80367799106476,-92.27025757740499,-92.85721085779551,-93.59527377986807,-94.52271443435096,-95.68686695001047,-97.14566466802579,-98.96881082922134,-101.23784098462414,-104.04369100153725,-107.47948722132517,-111.6254636623916,-116.52337738915094,-122.14190763534208,-128.3442141715951,-134.87993681672685,-141.42188736297686,-147.64135696386776,-153.28424790794938,-158.20950016146017,-162.38244928400348,-165.84283419365033,-168.67000426564343,-170.95693892096233,-172.79481804813733,-174.26558300695538,-175.43937670602963,-176.37454430298266,-177.1187796579127,-177.71065335981567,-178.18115016732318,-178.55505711725954,-178.852151272399,-179.08818633038618,-179.2756980926592,-179.42465523433103,-179.54298173907154,-179.63697465029782,-179.7116372907739,-179.77094464450062,-179.81805450610165,-179.85547537773476,-179.88519992206824,-179.90881101171664,-179.9275659893403,-179.94246360886675,-179.95429721432927,-179.96369698409478,-179.97116348803675,-179.97709434364288,-179.98180539006293,-179.9855475074279,-179.988519976998,-179.9908810935492],"type":"phase"}];
+
+  var PALETTE = [
+    "#1f77b4","#d62728","#2ca02c","#ff7f0e","#9467bd",
+    "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf",
+    "#393b79","#637939","#8c6d31","#843c39","#7b4178",
+    "#3182bd","#31a354","#756bb1","#636363","#d6616b",
+  ];
+
+  var timeData = [1000,1258.925411794167,1584.893192461114,1995.26231496888,2511.886431509581,3162.27766016838,3981.071705534974,5011.872336272725,6309.573444801935,7943.282347242817,10000.000000000011,12589.25411794168,15848.93192461115,19952.62314968881,25118.86431509582,31622.77660168382,39810.71705534977,50118.72336272729,63095.7344480194,79432.82347242825,100000.0000000001,125892.54117941689,158489.31924611158,199526.2314968883,251188.6431509584,316227.7660168385,398107.170553498,501187.2336272732,630957.3444801945,794328.2347242831,1000000.0000000021,1258925.41179417,1584893.192461117,1995262.314968884,2511886.431509586,3162277.660168386,3981071.705534981,5011872.336272734,6309573.444801948,7943282.347242833,10000000.00000003,12589254.11794171,15848931.924611181,19952623.14968885,25118864.31509587,31622776.60168388,39810717.05534984,50118723.36272738,63095734.44801952,79432823.47242841,100000000.00000031,125892541.1794172,158489319.2461119,199526231.4968887,251188643.1509589,316227766.0168391,398107170.5534988,501187233.6272742,630957344.4801958,794328234.7242848,1000000000.0000039];
+  var xLabel = "Frequency (Hz)";
+  var timeMs = timeData;
+
+  var allTraces = [];
+  var visible = [];
+
+  probes.forEach(function(p, idx) {
+    var trace = {
+      x: timeMs,
+      y: p.values,
+      name: p.name,
+      type: "scatter",
+      mode: "lines",
+      line: { color: p.color, width: 1.5 },
+      visible: true,
+    };
+    allTraces.push(trace);
+    visible.push(true);
+  });
+
+  var isAc = timeData.length > 0 && xLabel.indexOf("Frequency") >= 0;
+  var layout = {
+    margin: { l: 60, r: 20, t: 30, b: 50 },
+    xaxis: {
+      title: xLabel,
+      gridcolor: "#e0e0e0",
+      zeroline: true,
+      zerolinecolor: "#bbb",
+      type: isAc ? "log" : "linear",
+    },
+    yaxis: {
+      title: isAc ? "Magnitude (dB) / Phase (deg)" : "Voltage (V)",
+      gridcolor: "#e0e0e0",
+      zeroline: true,
+      zerolinecolor: "#bbb",
+    },
+    legend: { orientation: "h", y: -0.15 },
+    hovermode: "x unified",
+    paper_bgcolor: "#fff",
+    plot_bgcolor: "#fff",
+  };
+
+  var config = {
+    responsive: true,
+    displayModeBar: true,
+    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+    displaylogo: false,
+  };
+
+  Plotly.newPlot("chart", allTraces, layout, config);
+
+  // Signal table
+  var tbody = document.getElementById("signalTableBody");
+  probes.forEach(function(p, idx) {
+    var vals = p.values;
+    var max = -Infinity, min = Infinity;
+    for (var i = 0; i < vals.length; i++) {
+      if (vals[i] > max) max = vals[i];
+      if (vals[i] < min) min = vals[i];
+    }
+    if (!isFinite(max)) max = 0;
+    if (!isFinite(min)) min = 0;
+
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="color-cell"><span class="swatch" style="background:' + p.color + '"></span></td>' +
+      '<td><label><input type="checkbox" data-idx="' + idx + '" checked onchange="toggleTrace(this)"> ' + p.name + '</label></td>' +
+      '<td>' + p.type + '</td>' +
+      '<td>' + max.toFixed(3) + '</td>' +
+      '<td>' + min.toFixed(3) + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  window.toggleTrace = function(cb) {
+    var idx = parseInt(cb.getAttribute("data-idx"));
+    visible[idx] = cb.checked;
+    var vis = visible.map(function(v) { return v ? true : "legendonly"; });
+    Plotly.restyle("chart", { visible: vis });
+  };
+
+  window.applyTimeRange = function() {
+    var tStart = parseFloat(document.getElementById("tStartInput").value);
+    var tEnd = parseFloat(document.getElementById("tEndInput").value);
+    if (isNaN(tStart) || isNaN(tEnd) || tStart >= tEnd) return;
+    Plotly.relayout("chart", {
+      "xaxis.range": [tStart, tEnd],
+    });
+  };
+
+  window.toggleGrid = function() {
+    var show = document.getElementById("showGrid").checked;
+    var gc = show ? "#e0e0e0" : "transparent";
+    Plotly.relayout("chart", {
+      "xaxis.gridcolor": gc,
+      "yaxis.gridcolor": gc,
+    });
+  };
+
+  window.toggleLegend = function() {
+    var show = document.getElementById("showLegend").checked;
+    Plotly.relayout("chart", {
+      "showlegend": show,
+    });
+  };
+
+  window.toggleNetlist = function() {
+    var pre = document.getElementById("netlistPre");
+    pre.style.display = pre.style.display === "none" ? "block" : "none";
+  };
+
+  window.switchAnalysis = function() {
+    var sel = document.getElementById("analysisType");
+    var newType = sel.value;
+    var currentType = "ac";
+    if (newType === currentType) return;
+    // Navigate using explicit filename map baked into this page at generation time.
+    // The map contains actual filenames (e.g. "rc_lowpass_ac_001_ac_interactive.html")
+    // because different analysis types may use different fixtures (e.g. AC uses
+    // rc_lowpass_ac_001, not rc_lowpass_001).
+    var fileMap = {"tran":"rc_lowpass_001_tran_interactive.html","op":"rc_lowpass_001_op_interactive.html","dc":"rc_lowpass_001_dc_interactive.html","ac":"rc_lowpass_ac_001_ac_interactive.html","fft":"rc_lowpass_fft_001_fft_interactive.html"};
+    if (fileMap && fileMap[newType]) {
+      window.location.href = fileMap[newType];
+    } else {
+      alert("No pre-generated file for " + newType.toUpperCase() + " analysis for this fixture.");
+      sel.value = currentType;
+    }
+  };
+
+  // -----------------------------------------------------------------------
+  // Dynamic sliders — backed by sim_server.ts
+  // -----------------------------------------------------------------------
+  var COMPONENTS = [{"ref":"V1","componentType":"voltage_source","value":"5","numericValue":5,"unit":"V","logScale":false,"min":0,"max":25,"step":0.5},{"ref":"R1","componentType":"resistor","value":"1k","numericValue":1000,"unit":"Ω","logScale":true,"min":1,"max":100000,"step":100},{"ref":"C1","componentType":"capacitor","value":"1u","numericValue":0.000001,"unit":"F","logScale":true,"min":1e-8,"max":0.00009999999999999999,"step":1e-7}];
+  var SIM_SERVER = "http://localhost:3777";
+  var sliderDebounce = null;
+
+  function initSliders() {
+    var panel = document.getElementById("sliderPanel");
+    var container = document.getElementById("sliderContainer");
+    var note = document.getElementById("serverNote");
+
+    if (!COMPONENTS || COMPONENTS.length === 0) {
+      panel.style.display = "none";
+      return;
+    }
+
+    panel.classList.add("visible");
+
+    COMPONENTS.forEach(function(c) {
+      var row = document.createElement("div");
+      row.className = "slider-row";
+
+      var label = document.createElement("label");
+      label.textContent = c.ref;
+      label.title = c.componentType;
+
+      var input = document.createElement("input");
+      input.type = "range";
+      input.id = "slider_" + c.ref;
+      input.dataset.ref = c.ref;
+      input.dataset.unit = c.unit;
+      input.dataset.logScale = c.logScale ? "1" : "0";
+      input.dataset.numericValue = c.numericValue;
+
+      if (c.logScale) {
+        // Log-scale slider: min/max in log space
+        var logMin = Math.log10(c.min);
+        var logMax = Math.log10(c.max);
+        input.min = logMin;
+        input.max = logMax;
+        input.step = (logMax - logMin) / 200;
+        input.value = Math.log10(c.numericValue);
+      } else {
+        input.min = c.min;
+        input.max = c.max;
+        input.step = c.step;
+        input.value = c.numericValue;
+      }
+
+      var valSpan = document.createElement("span");
+      valSpan.className = "val";
+      valSpan.id = "val_" + c.ref;
+      valSpan.textContent = c.value;
+
+      var unitSpan = document.createElement("span");
+      unitSpan.className = "unit";
+      unitSpan.textContent = c.unit;
+
+      row.appendChild(label);
+      row.appendChild(input);
+      row.appendChild(valSpan);
+      row.appendChild(unitSpan);
+      container.appendChild(row);
+
+      input.addEventListener("input", function() {
+        var logS = input.dataset.logScale === "1";
+        var numVal = logS ? Math.pow(10, parseFloat(input.value)) : parseFloat(input.value);
+        valSpan.textContent = formatSliderValue(numVal, c.unit);
+        debounceSimulate();
+      });
+    });
+
+    // Check if server is reachable
+    fetch(SIM_SERVER + "/fixture/rc_lowpass_001", { method: "GET" })
+      .then(function(r) { return r.json(); })
+      .then(function() {
+        note.textContent = "Server connected (" + SIM_SERVER + ")";
+        note.className = "server-note";
+      })
+      .catch(function() {
+        note.innerHTML = "Server not running. Start with: <code>bun run sim_server.ts</code>";
+        note.className = "server-note error";
+      });
+  }
+
+  function formatSliderValue(num, unit) {
+    if (unit === "\u03A9") {
+      if (num >= 1e6) return (num / 1e6).toFixed(1) + "M";
+      if (num >= 1e3) return (num / 1e3).toFixed(1) + "k";
+      return num.toFixed(0);
+    }
+    if (unit === "F") {
+      if (num >= 1) return num.toFixed(2);
+      if (num >= 1e-3) return (num * 1e3).toFixed(1) + "m";
+      if (num >= 1e-6) return (num * 1e6).toFixed(1) + "u";
+      if (num >= 1e-9) return (num * 1e9).toFixed(1) + "n";
+      return num.toExponential(1);
+    }
+    if (unit === "H") {
+      if (num >= 1) return num.toFixed(2);
+      if (num >= 1e-3) return (num * 1e3).toFixed(1) + "m";
+      return (num * 1e6).toFixed(1) + "u";
+    }
+    return num.toFixed(2);
+  }
+
+  function getSliderValues() {
+    var values = {};
+    COMPONENTS.forEach(function(c) {
+      var input = document.getElementById("slider_" + c.ref);
+      if (!input) return;
+      var logS = input.dataset.logScale === "1";
+      var numVal = logS ? Math.pow(10, parseFloat(input.value)) : parseFloat(input.value);
+      values[c.ref] = formatSliderValue(numVal, c.unit);
+    });
+    return values;
+  }
+
+  function debounceSimulate() {
+    if (sliderDebounce) clearTimeout(sliderDebounce);
+    sliderDebounce = setTimeout(runSimulation, 250);
+  }
+
+  function runSimulation() {
+    var loading = document.getElementById("sliderLoading");
+    loading.innerHTML = '<span class="slider-loading"></span>';
+
+    var body = {
+      fixture: "rc_lowpass_ac_001",
+      components: getSliderValues(),
+      analysisType: "ac"
+    };
+
+    fetch(SIM_SERVER + "/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      loading.innerHTML = "";
+      if (!data.ok) {
+        console.error("Simulation error:", data.error);
+        loading.textContent = "Error: " + data.error;
+        return;
+      }
+      // Update chart with new data
+      var newTraces = data.probes.map(function(p, i) {
+        return {
+          x: data.analysisType === "tran"
+            ? data.xValues.map(function(t) { return t * 1000; })
+            : data.xValues,
+          y: p.values,
+          name: p.name,
+          type: "scatter",
+          mode: "lines",
+          line: { color: PALETTE[i % PALETTE.length], width: 1.5 },
+          visible: visible[i] !== false,
+        };
+      });
+
+      // Update visible array for new probe count
+      while (visible.length < newTraces.length) visible.push(true);
+
+      Plotly.react("chart", newTraces, layout, config);
+
+      // Update netlist display
+      document.getElementById("netlistPre").textContent = data.netlist;
+    })
+    .catch(function(e) {
+      loading.innerHTML = "";
+      var note = document.getElementById("serverNote");
+      note.innerHTML = "Server error: " + e.message + ". Is <code>bun run sim_server.ts</code> running?";
+      note.className = "server-note error";
+    });
+  }
+
+  // Initialize sliders on load
+  initSliders();
+
+  // ---- URL param auto-apply (from schematic editor) ----
+  // e.g. ?R1=2.2k&C1=100n — sets slider values and triggers re-simulation
+  function applyUrlParams() {
+    var params = new URLSearchParams(window.location.search);
+    if (params.keys().next().done) return;
+    var applied = false;
+    params.forEach(function(val, ref) {
+      var slider = document.getElementById("slider_" + ref);
+      if (!slider) return;
+      var logS = slider.dataset.logScale === "1";
+      var numVal = parseFloat(val);
+      if (isNaN(numVal)) {
+        // Try parsing SPICE-style values (2.2k, 100n, etc.)
+        numVal = parseSpiceValue(val);
+      }
+      if (isNaN(numVal) || numVal <= 0) return;
+      if (logS) {
+        slider.value = Math.log10(numVal);
+      } else {
+        slider.value = numVal;
+      }
+      var valSpan = document.getElementById("val_" + ref);
+      var unit = slider.dataset.unit || "";
+      if (valSpan) valSpan.textContent = formatSliderValue(numVal, unit);
+      applied = true;
+    });
+    if (applied) {
+      runSimulation();
+    }
+  }
+
+  function parseSpiceValue(s) {
+    s = s.trim().toLowerCase();
+    var suffixes = { t:1e12, g:1e9, meg:1e6, k:1e3, m:1e-3, u:1e-6, n:1e-9, p:1e-12, f:1e-15 };
+    var suffixesArr = Object.keys(suffixes).sort(function(a,b){ return b.length - a.length; });
+    for (var i = 0; i < suffixesArr.length; i++) {
+      var suf = suffixesArr[i];
+      if (s.endsWith(suf)) {
+        var num = parseFloat(s.slice(0, -suf.length));
+        return isNaN(num) ? NaN : num * suffixes[suf];
+      }
+    }
+    return parseFloat(s);
+  }
+
+  applyUrlParams();
+})();
+</script>
+</body>
+</html>
