@@ -204,7 +204,7 @@ function formatSpiceValue(n: number, unit: string): string {
 // ---------------------------------------------------------------------------
 // Bun server
 // ---------------------------------------------------------------------------
-const PORT = 3777
+const PORT = Number(process.env.PORT) || 3777
 
 console.log(`Open Forge sim server starting on http://localhost:${PORT}`)
 console.log(`Fixtures: ${Object.keys(FIXTURES).join(", ")}`)
