@@ -211,6 +211,7 @@ console.log(`Fixtures: ${Object.keys(FIXTURES).join(", ")}`)
 
 Bun.serve({
   port: PORT,
+  hostname: "0.0.0.0",
 
   async fetch(req) {
     const url = new URL(req.url)
