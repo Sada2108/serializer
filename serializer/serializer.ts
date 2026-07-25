@@ -45,6 +45,7 @@ import type {
 import { circuitJsonToKicadPcb } from "./kicadPcbWriter"
 import { snapCircuitJsonTracesToManhattan, enforceTracePadClearance } from "./pcbRouting"
 import { lookupSymbol, getGroundSymbolName, logMissingSymbol } from "./symbolLibrary"
+import { lookupKicadSymbol, hasKicadSymbol } from "./kicadSymbolLibrary"
 
 // --------------------------------------------------------------------------- //
 // Types
@@ -491,6 +492,7 @@ const FOOTPRINT_SIZE_MM: Record<string, { width: number; height: number }> = {
   "TSOT-23-5":  { width: 2.9, height: 1.6 },
   "MSOP-8":     { width: 3.0, height: 3.0 },
   "MSOP-10":    { width: 3.0, height: 3.0 },
+  "SOIC-8":     { width: 3.9, height: 4.9 },
 }
 
 function lookupFootprintSize(footprint: string): { width: number; height: number } {
@@ -526,7 +528,7 @@ function emitPcbBoard(spec: NirV11BoardSpec): AnyCircuitElement {
 
 function emitSourceComponentBase(comp: NirV11Component): AnyCircuitElement {
   return {
-    type: "source_component_base",
+   type: "source_component_base",
     source_component_id: `${comp.ref}_source`,
     name: comp.ref,
     component_type: comp.component_type,
@@ -573,8 +575,105 @@ function emitSchematicComponent(
   const isIc = isIC(comp.component_type)
   const elements: AnyCircuitElement[] = []
 
+  const partNumber = typeof comp.value === "string" ? comp.value : undefined
+  const kicadSym = lookupKicadSymbol(comp.component_type, partNumber)
   const sym = lookupSymbol(comp.component_type)
-  if (!sym) logMissingSymbol(comp.component_type)
+  if (!kicadSym && !sym) logMissingSymbol(comp.component_type)
+
+  if (kicadSym) {
+    const bb = kicadSym.bodyBox
+    const bodyW = Math.max(bb.width, 2)
+    const bodyH = Math.max(bb.height, 2)
+
+    elements.push({
+      type: "schematic_component",
+      schematic_component_id: refSchId,
+      source_component_id: `${comp.ref}_source`,
+      center: { x, y },
+      size: { width: bodyW, height: bodyH },
+      is_box_with_pins: false,
+      symbol_display_value: typeof comp.value === "string" ? comp.value : undefined,
+    } as AnyCircuitElement)
+
+    for (const prim of kicadSym.primitives) {
+      if (prim.type === "rectangle" && prim.start && prim.end) {
+        elements.push({
+          type: "schematic_box",
+          schematic_component_id: refSchId,
+          x: x + prim.start.x,
+          y: y + prim.start.y,
+          width: prim.end.x - prim.start.x,
+          height: prim.end.y - prim.start.y,
+          is_dashed: false,
+        } as AnyCircuitElement)
+      } else if (prim.type === "polyline" && prim.points && prim.points.length > 1) {
+        const absPoints = prim.points.map(p => ({ x: x + p.x, y: y + p.y }))
+        elements.push({
+          type: "schematic_path",
+          schematic_path_id: `kpath_${refSchId}_${elements.length}`,
+          schematic_component_id: refSchId,
+          points: absPoints,
+          is_filled: !!prim.filled,
+          fill_color: prim.filled ? "#0c1e2e" : undefined,
+        } as AnyCircuitElement)
+      } else if (prim.type === "pin" && prim.pin) {
+        const px = x + prim.pin.x
+        const py = y + prim.pin.y
+        const angleRad = (prim.pin.angle * Math.PI) / 180
+        const ex = px + Math.cos(angleRad) * prim.pin.length
+        const ey = py - Math.sin(angleRad) * prim.pin.length
+
+        elements.push({
+          type: "schematic_line",
+          schematic_line_id: `kline_${refSchId}_${prim.pin.number}`,
+          schematic_component_id: refSchId,
+          x1: ex, y1: ey, x2: px, y2: py,
+          color: "#0c1e2e",
+          is_dashed: false,
+        } as AnyCircuitElement)
+
+        const portIdx = kicadSym.ports.findIndex(p => p.number === prim.pin!.number)
+        if (portIdx >= 0) {
+          elements.push({
+            type: "schematic_port",
+            schematic_port_id: `kport_${refSchId}_${prim.pin.number}`,
+            source_port_id: `${comp.ref}_source_port_${prim.pin.number}`,
+            schematic_component_id: refSchId,
+            center: { x: px, y: py },
+            facing_angle: prim.pin.angle,
+            display_pin_label: prim.pin.name || prim.pin.number,
+          } as AnyCircuitElement)
+        }
+      }
+    }
+
+    const bodyH2 = bodyH
+    elements.push({
+      type: "schematic_text",
+      schematic_text_id: `${refSchId}_reftext`,
+      text: comp.ref,
+      font_size: SYMBOL_TEXT_REF_FONT,
+      position: { x, y: y + bodyH2 / 2 + 1.8 },
+      rotation: 0,
+      anchor: "center",
+      color: "#000",
+    } as AnyCircuitElement)
+
+    if (typeof comp.value === "string" && comp.value.length > 0) {
+      elements.push({
+        type: "schematic_text",
+        schematic_text_id: `${refSchId}_valtext`,
+        text: comp.value,
+        font_size: SYMBOL_TEXT_VAL_FONT,
+        position: { x, y: y - bodyH2 / 2 - 1.8 },
+        rotation: 0,
+        anchor: "center",
+        color: "#333",
+      } as AnyCircuitElement)
+    }
+
+    return elements
+  }
 
   const bodySize = sym
     ? { width: sym.width, height: sym.height }
@@ -582,7 +681,6 @@ function emitSchematicComponent(
       ? { width: SYMBOL_IC_W, height: SYMBOL_IC_H + Math.max(0, Math.ceil(pinCount / 2) - 4) }
       : { width: SYMBOL_DISCRETE_W, height: SYMBOL_DISCRETE_H }
 
-  // Parent schematic_component
   elements.push({
     type: "schematic_component",
     schematic_component_id: refSchId,
@@ -594,12 +692,10 @@ function emitSchematicComponent(
     symbol_display_value: typeof comp.value === "string" ? comp.value : undefined,
   } as AnyCircuitElement)
 
-  // Symbol geometry — only emit custom primitives when no library symbol
   if (!sym) {
     elements.push(...makeSymbolGeometry(comp, refSchId, x, y, bodySize, pinCount))
   }
 
-  // Ref label (orphan text so it renders for all types)
   const bodyH = bodySize.height
   elements.push({
     type: "schematic_text",

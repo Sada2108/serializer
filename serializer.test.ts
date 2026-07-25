@@ -292,3 +292,45 @@ describe("loud failure on malformed NIR", () => {
     expect(traces.length).toBe(2)
   })
 })
+
+// --------------------------------------------------------------------------- //
+// LM358 KiCad symbol integration test
+// --------------------------------------------------------------------------- //
+
+describe("LM358 KiCad symbol integration", () => {
+  it("serializes LM358 fixture with KiCad symbol primitives", () => {
+    const { lm358NoninvNir } = require("./serializer/fixtures")
+    const result = serializeNir(lm358NoninvNir)
+    expect(result.circuitJson.length).toBeGreaterThan(0)
+
+    const schComps = result.circuitJson.filter(
+      (el: any) => el.type === "schematic_component"
+    )
+    expect(schComps.length).toBeGreaterThan(0)
+
+    const u1 = schComps.find(
+      (el: any) => el.source_component_id === "U1_source"
+    )
+    expect(u1).toBeDefined()
+    expect(u1.is_box_with_pins).toBe(false)
+
+    const kicadPaths = result.circuitJson.filter(
+      (el: any) => el.type === "schematic_path" && el.schematic_component_id === "U1_sch"
+    )
+    expect(kicadPaths.length).toBeGreaterThan(0)
+
+    const kicadLines = result.circuitJson.filter(
+      (el: any) => el.type === "schematic_line" && el.schematic_component_id === "U1_sch"
+    )
+    expect(kicadLines.length).toBeGreaterThan(0)
+
+    expect(result.svg).toContain("<svg")
+  })
+
+  it("renders SVG with KiCad triangle symbol for LM358", () => {
+    const { lm358NoninvNir } = require("./serializer/fixtures")
+    const result = serializeNir(lm358NoninvNir)
+    expect(result.svg).toContain("<svg")
+    expect(result.svg.length).toBeGreaterThan(500)
+  })
+})

@@ -6,9 +6,11 @@
 import { readFileSync, writeFileSync, existsSync } from "fs"
 import { join } from "path"
 import { serializeNirAsync, renderCircuitJson } from "../../layer_three/serializer/serializer.ts"
-import { getGroundSymbolName, lookupSymbol } from "../../layer_three/serializer/symbolLibrary.ts"
+import { lookupSymbol } from "../../layer_three/serializer/symbolLibrary.ts"
+import { lookupKicadSymbol } from "../../layer_three/serializer/kicadSymbolLibrary.ts"
 import {
   opampNoninvNir, voltageDividerNir, rcLowpassNir, rcLowpassAcNir, rcLowpassFftNir,
+  lm358NoninvNir,
   type NirV11,
 } from "../../layer_three/serializer/fixtures/index.ts"
 
@@ -18,6 +20,7 @@ const FIXTURES = {
   rc_lowpass_001: rcLowpassNir,
   rc_lowpass_ac_001: rcLowpassAcNir,
   rc_lowpass_fft_001: rcLowpassFftNir,
+  lm358_noninv_001: lm358NoninvNir,
 } as const
 
 type FixtureName = keyof typeof FIXTURES
@@ -29,6 +32,7 @@ const SIMULATOR_MAP: Record<string, string> = {
   rc_lowpass_001: "rc_lowpass_001_tran_interactive.html",
   rc_lowpass_ac_001: "rc_lowpass_ac_001_ac_interactive.html",
   rc_lowpass_fft_001: "rc_lowpass_fft_001_fft_interactive.html",
+  lm358_noninv_001: "",
 }
 
 function injectPowerSymbols(circuitJson: any[], nir: any): any[] {
@@ -73,15 +77,54 @@ function injectPowerSymbols(circuitJson: any[], nir: any): any[] {
     })
 
     if (net.net_type === "ground") {
-      out.push({
-        type: "schematic_component",
-        schematic_component_id: schId,
-        source_component_id: sourceId,
-        center: { x: sx, y: sy },
-        size: { width: 2, height: 2 },
-        is_box_with_pins: true,
-        symbol_name: getGroundSymbolName(),
-      })
+      const gndSym = lookupKicadSymbol("ground")
+      if (gndSym) {
+        const bb = gndSym.bodyBox
+        out.push({
+          type: "schematic_component",
+          schematic_component_id: schId,
+          source_component_id: sourceId,
+          center: { x: sx, y: sy },
+          size: { width: Math.max(bb.width, 2), height: Math.max(bb.height, 2) },
+          is_box_with_pins: false,
+        })
+        for (const prim of gndSym.primitives) {
+          if (prim.type === "polyline" && prim.points && prim.points.length > 1) {
+            const absPoints = prim.points.map(p => ({ x: sx + p.x, y: sy + p.y }))
+            out.push({
+              type: "schematic_path",
+              schematic_path_id: `kgnd_${schId}`,
+              schematic_component_id: schId,
+              points: absPoints,
+              is_filled: !!prim.filled,
+              fill_color: prim.filled ? "#0c1e2e" : undefined,
+            })
+          } else if (prim.type === "pin" && prim.pin) {
+            const px = sx + prim.pin.x, py = sy + prim.pin.y
+            const angleRad = (prim.pin.angle * Math.PI) / 180
+            const ex = px + Math.cos(angleRad) * prim.pin.length
+            const ey = py - Math.sin(angleRad) * prim.pin.length
+            out.push({
+              type: "schematic_line",
+              schematic_line_id: `kgnd_line_${schId}`,
+              schematic_component_id: schId,
+              x1: ex, y1: ey, x2: px, y2: py,
+              color: "#0c1e2e",
+              is_dashed: false,
+            })
+          }
+        }
+      } else {
+        out.push({
+          type: "schematic_component",
+          schematic_component_id: schId,
+          source_component_id: sourceId,
+          center: { x: sx, y: sy },
+          size: { width: 2, height: 2 },
+          is_box_with_pins: true,
+          symbol_name: "ground_down",
+        })
+      }
     } else {
       out.push({
         type: "schematic_text",
@@ -128,11 +171,55 @@ function fixComponentSymbols(circuitJson: any[], nir: any): any[] {
     const nirComp = nirCompBySourceId.get(srcId)
     if (!nirComp) continue
 
-    const sym = lookupSymbol(nirComp.component_type)
-    if (sym) {
-      el.symbol_name = sym.symbolName
-      el.is_box_with_pins = true
-      el.size = { width: sym.width, height: sym.height }
+    const kicadSym = lookupKicadSymbol(nirComp.component_type)
+    if (kicadSym) {
+      const bb = kicadSym.bodyBox
+      el.is_box_with_pins = false
+      el.size = { width: Math.max(bb.width, 2), height: Math.max(bb.height, 2) }
+
+      for (const prim of kicadSym.primitives) {
+        if (prim.type === "rectangle" && prim.start && prim.end) {
+          out.push({
+            type: "schematic_box",
+            schematic_component_id: el.schematic_component_id,
+            x: el.center.x + prim.start.x,
+            y: el.center.y + prim.start.y,
+            width: prim.end.x - prim.start.x,
+            height: prim.end.y - prim.start.y,
+            is_dashed: false,
+          })
+        } else if (prim.type === "polyline" && prim.points && prim.points.length > 1) {
+          const absPoints = prim.points.map(p => ({ x: el.center.x + p.x, y: el.center.y + p.y }))
+          out.push({
+            type: "schematic_path",
+            schematic_path_id: `kfix_${el.schematic_component_id}_${out.length}`,
+            schematic_component_id: el.schematic_component_id,
+            points: absPoints,
+            is_filled: !!prim.filled,
+            fill_color: prim.filled ? "#0c1e2e" : undefined,
+          })
+        } else if (prim.type === "pin" && prim.pin) {
+          const px = el.center.x + prim.pin.x, py = el.center.y + prim.pin.y
+          const angleRad = (prim.pin.angle * Math.PI) / 180
+          const ex = px + Math.cos(angleRad) * prim.pin.length
+          const ey = py - Math.sin(angleRad) * prim.pin.length
+          out.push({
+            type: "schematic_line",
+            schematic_line_id: `kfix_line_${el.schematic_component_id}_${prim.pin.number}`,
+            schematic_component_id: el.schematic_component_id,
+            x1: ex, y1: ey, x2: px, y2: py,
+            color: "#0c1e2e",
+            is_dashed: false,
+          })
+        }
+      }
+    } else {
+      const sym = lookupSymbol(nirComp.component_type)
+      if (sym) {
+        el.symbol_name = sym.symbolName
+        el.is_box_with_pins = true
+        el.size = { width: sym.width, height: sym.height }
+      }
     }
   }
 

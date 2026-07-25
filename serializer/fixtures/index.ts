@@ -12,11 +12,13 @@ import voltageDividerNirJson from "./voltage_divider_001.nir.json"
 import rcLowpassNirJson from "./rc_lowpass_001.nir.json"
 import rcLowpassAcNirJson from "./rc_lowpass_ac_001.nir.json"
 import rcLowpassFftNirJson from "./rc_lowpass_fft_001.nir.json"
+import lm358NoninvNirJson from "./lm358_noninv_001.nir.json"
 export const opampNoninvNir = opampNoninvNirJson
 export const voltageDividerNir = voltageDividerNirJson
 export const rcLowpassNir = rcLowpassNirJson
 export const rcLowpassAcNir = rcLowpassAcNirJson
 export const rcLowpassFftNir = rcLowpassFftNirJson
+export const lm358NoninvNir = lm358NoninvNirJson
 // --------------------------------------------------------------------------- //
 // v0.1 (Libbrecht-Hall) — legacy schema
 // --------------------------------------------------------------------------- //
