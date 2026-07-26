@@ -21,3 +21,7 @@ test_orchestrator.py
 *.kicad_sym
 *.kicad_sch
 ~*.kicad_pcb.lck
+
+# PCB/DRC generated output
+*.rpt
+_opamp_final.svg
