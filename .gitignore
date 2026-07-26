@@ -10,3 +10,14 @@ render.js
 diag_routing.ts
 test_orchestrator.py
 .history/
+
+# KiCad / PCB files
+*.kicad_pcb
+*.kicad_pcb.old
+*.kicad_pcb.lck
+*.kicad_pcb.kicad_prl
+*.kicad_pro
+*.kicad_prl
+*.kicad_sym
+*.kicad_sch
+~*.kicad_pcb.lck
