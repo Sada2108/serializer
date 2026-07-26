@@ -25,3 +25,6 @@ test_orchestrator.py
 # PCB/DRC generated output
 *.rpt
 _opamp_final.svg
+
+# untracked by request
+pcbRouting.test.ts
