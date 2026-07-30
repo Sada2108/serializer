@@ -210,8 +210,8 @@ function buildFootprintBlocks(
       const sinR = Math.sin(rotRad)
       const dx = pad.x - comp.center.x
       const dy = pad.y - comp.center.y
-      const padX = cosR * dx - sinR * dy
-      const padY = sinR * dx + cosR * dy
+      const padX = cosR * dx + sinR * dy
+      const padY = -sinR * dx + cosR * dy
       const padW = pad.width ?? 0.6
       const padH = pad.height ?? 0.6
       const padNum = (pad.port_hints?.find((h: string) => /^\d+$/.test(h)) ?? String(pi + 1)) as string

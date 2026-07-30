@@ -12,7 +12,7 @@
       "ref": "V1",
       "component_type": "voltage_source",
       "value": "5",
-      "footprint": "0603",
+      "footprint": "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
       "position": { "x": 10, "y": 25 },
       "confidence": { "schematic": 1.0, "pcb": 0.9 }
     },
@@ -20,7 +20,7 @@
       "ref": "R1",
       "component_type": "resistor",
       "value": "1k",
-      "footprint": "0603",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
       "position": { "x": 25, "y": 25 },
       "confidence": { "schematic": 1.0, "pcb": 0.9 }
     },
@@ -28,7 +28,7 @@
       "ref": "C1",
       "component_type": "capacitor",
       "value": "1u",
-      "footprint": "0603",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
       "position": { "x": 40, "y": 25 },
       "confidence": { "schematic": 1.0, "pcb": 0.9 }
     }

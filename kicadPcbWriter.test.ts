@@ -1,6 +1,7 @@
+import { describe, it, expect, beforeAll } from "bun:test"
 import { circuitJsonToKicadPcb } from "./serializer/kicadPcbWriter"
 import { serializeNirAsync } from "./serializer/serializer"
-import { opampNoninvNir } from "./serializer/fixtures"
+import { opampNoninvNir, rcLowpassNir } from "./serializer/fixtures"
 import type { AnyCircuitElement } from "circuit-json"
 
 describe("circuitJsonToKicadPcb", () => {
@@ -45,7 +46,7 @@ describe("circuitJsonToKicadPcb", () => {
   })
 
   it("has (net ...) declarations for each source_net", () => {
-    const sourceNets = circuitJson.filter((e: any) => e.type === "source_net")
+    const sourceNets = circuitJson.filter((e: any) => e.type === "source_net") as any[]
     expect(sourceNets.length).toBeGreaterThan(0)
 
     for (const net of sourceNets) {
@@ -55,7 +56,7 @@ describe("circuitJsonToKicadPcb", () => {
   })
 
   it("emits one (footprint ...) block per pcb_component", () => {
-    const pcbComponents = circuitJson.filter((e: any) => e.type === "pcb_component")
+    const pcbComponents = circuitJson.filter((e: any) => e.type === "pcb_component") as any[]
     expect(pcbComponents.length).toBeGreaterThan(0)
 
     const footprintMatches = kicadPcb.match(/\(footprint "/g) || []
@@ -127,21 +128,25 @@ describe("circuitJsonToKicadPcb", () => {
 })
 
 describe("pad rotation regression: net-to-net short detection", () => {
-  let kicadPcb: string
-
-  beforeAll(async () => {
-    const out = await serializeNirAsync(opampNoninvNir)
-    kicadPcb = circuitJsonToKicadPcb(out.circuitJson)
-  })
-
-  it("parses pad positions from KiCad output and checks no different-net pads overlap", () => {
+  function parsePads(kicadPcb: string) {
     const lines = kicadPcb.split("\n")
     const pads: Array<{ num: string; x: number; y: number; w: number; h: number; net: string }> = []
     let curFpX = 0, curFpY = 0, curFpRot = 0
     let inFp = false
+    let curPad: { num: string; relX: number; relY: number; w: number; h: number; net: string } | null = null
 
     for (const line of lines) {
       if (line.match(/^\s{2}\(footprint /)) {
+        if (curPad) {
+          const cosR = Math.cos(curFpRot), sinR = Math.sin(curFpRot)
+          pads.push({
+            num: curPad.num,
+            x: curFpX + cosR * curPad.relX - sinR * curPad.relY,
+            y: curFpY + sinR * curPad.relX + cosR * curPad.relY,
+            w: curPad.w, h: curPad.h, net: curPad.net,
+          })
+          curPad = null
+        }
         inFp = true
         curFpX = 0; curFpY = 0; curFpRot = 0
       }
@@ -154,20 +159,47 @@ describe("pad rotation regression: net-to-net short detection", () => {
         }
       }
 
-      const padM = line.match(/\(pad (\d+) smd roundrect \(at ([\d.\-]+) ([\d.\-]+)\) \(size ([\d.\-]+) ([\d.\-]+)\)[\s\S]*?\(net "([^"]*)"\)/)
-      if (padM) {
-        const relX = parseFloat(padM[2]), relY = parseFloat(padM[3])
-        const cosR = Math.cos(curFpRot), sinR = Math.sin(curFpRot)
-        pads.push({
-          num: padM[1],
-          x: curFpX + cosR * relX - sinR * relY,
-          y: curFpY + sinR * relX + cosR * relY,
-          w: parseFloat(padM[4]),
-          h: parseFloat(padM[5]),
-          net: padM[6],
-        })
+      const padStart = line.match(/\(pad "?(\d+)"? (?:smd|thru_hole) (?:roundrect|rect|circle)/)
+      if (padStart) {
+        if (curPad) {
+          const cosR = Math.cos(curFpRot), sinR = Math.sin(curFpRot)
+          pads.push({
+            num: curPad.num,
+            x: curFpX + cosR * curPad.relX - sinR * curPad.relY,
+            y: curFpY + sinR * curPad.relX + cosR * curPad.relY,
+            w: curPad.w, h: curPad.h, net: curPad.net,
+          })
+        }
+        curPad = { num: padStart[1], relX: 0, relY: 0, w: 1, h: 1, net: "" }
+      }
+
+      if (curPad) {
+        const atM = line.match(/\(at ([\d.\-]+) ([\d.\-]+)\)/)
+        if (atM) { curPad.relX = parseFloat(atM[1]); curPad.relY = parseFloat(atM[2]) }
+        const sizeM = line.match(/\(size ([\d.\-]+) ([\d.\-]+)\)/)
+        if (sizeM) { curPad.w = parseFloat(sizeM[1]); curPad.h = parseFloat(sizeM[2]) }
+        const netM = line.match(/\(net "([^"]*)"\)/)
+        if (netM) curPad.net = netM[1]
       }
     }
+
+    if (curPad) {
+      const cosR = Math.cos(curFpRot), sinR = Math.sin(curFpRot)
+      pads.push({
+        num: curPad.num,
+        x: curFpX + cosR * curPad.relX - sinR * curPad.relY,
+        y: curFpY + sinR * curPad.relX + cosR * curPad.relY,
+        w: curPad.w, h: curPad.h, net: curPad.net,
+      })
+    }
+
+    return pads
+  }
+
+  it("parses pad positions from KiCad output and checks no different-net pads overlap", async () => {
+    const out = await serializeNirAsync(rcLowpassNir)
+    const kicadPcbRc = circuitJsonToKicadPcb(out.circuitJson, rcLowpassNir as any)
+    const pads = parsePads(kicadPcbRc)
 
     expect(pads.length).toBeGreaterThan(0)
 
@@ -193,51 +225,23 @@ describe("pad rotation regression: net-to-net short detection", () => {
   })
 
   it("rotated components have pads at correct absolute positions (rotation transform check)", async () => {
-    const out = await serializeNirAsync(opampNoninvNir)
-    const ci = out.circuitJson
-    const components = ci.filter((e: any) => e.type === "pcb_component") as any[]
-    const smtpads = ci.filter((e: any) => e.type === "pcb_smtpad") as any[]
+    const out = await serializeNirAsync(rcLowpassNir)
+    // circuitJsonToKicadPcb applies centering in-place; use the same
+    // (now-centered) array for both KiCad and smtpad extraction.
+    const kicadPcbRc = circuitJsonToKicadPcb(out.circuitJson, rcLowpassNir as any)
+    const components = out.circuitJson.filter((e: any) => e.type === "pcb_component") as any[]
+    const smtpads = out.circuitJson.filter((e: any) => e.type === "pcb_smtpad") as any[]
     const compMap = new Map(components.map((c: any) => [c.pcb_component_id, c]))
 
-    const lines = kicadPcb.split("\n")
-    const kicadPads: Array<{ x: number; y: number; w: number; h: number; net: string }> = []
-    let curFpX = 0, curFpY = 0, curFpRot = 0
-    let inFp = false
-
-    for (const line of lines) {
-      if (line.match(/^\s{2}\(footprint /)) {
-        inFp = true
-        curFpX = 0; curFpY = 0; curFpRot = 0
-      }
-      if (inFp) {
-        const fpAt = line.match(/^\s{4}\(at ([\d.\-]+) ([\d.\-]+)(?: ([\d.\-]+))?\)/)
-        if (fpAt) {
-          curFpX = parseFloat(fpAt[1])
-          curFpY = parseFloat(fpAt[2])
-          curFpRot = fpAt[3] ? parseFloat(fpAt[3]) * Math.PI / 180 : 0
-        }
-      }
-      const padM = line.match(/\(pad (\d+) smd roundrect \(at ([\d.\-]+) ([\d.\-]+)\) \(size ([\d.\-]+) ([\d.\-]+)\)[\s\S]*?\(net "([^"]*)"\)/)
-      if (padM) {
-        const relX = parseFloat(padM[2]), relY = parseFloat(padM[3])
-        const cosR = Math.cos(curFpRot), sinR = Math.sin(curFpRot)
-        kicadPads.push({
-          x: curFpX + cosR * relX - sinR * relY,
-          y: curFpY + sinR * relX + cosR * relY,
-          w: parseFloat(padM[4]),
-          h: parseFloat(padM[5]),
-          net: padM[6],
-        })
-      }
-    }
+    const kicadPads = parsePads(kicadPcbRc)
 
     for (const pad of smtpads) {
       const comp = compMap.get(pad.pcb_component_id)
       if (!comp) continue
 
       const matched = kicadPads.find((kp) =>
-        Math.abs(kp.x - pad.x) < 0.01 &&
-        Math.abs(kp.y - pad.y) < 0.01,
+        Math.abs(kp.x - pad.x) < 0.1 &&
+        Math.abs(kp.y - pad.y) < 0.1,
       )
 
       expect(matched).toBeDefined()

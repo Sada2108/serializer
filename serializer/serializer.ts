@@ -227,7 +227,15 @@ export const FOOTPRINT_MAP: Record<string, string> = {
 }
 
 export function kicadFootprint(fixtureName: string): string {
-  return FOOTPRINT_MAP[fixtureName] ?? fixtureName
+  const mapped = FOOTPRINT_MAP[fixtureName]
+  if (mapped) return mapped
+  const ci = fixtureName.indexOf(":")
+  if (ci > 0 && ci < fixtureName.length - 1 && !fixtureName.startsWith("kicad:")) {
+    const lib = fixtureName.slice(0, ci)
+    const part = fixtureName.slice(ci + 1)
+    return `kicad:${lib}/${part}`
+  }
+  return fixtureName
 }
 
 // Map fixture pin names -> tscircuit-valid pin labels (letters/numbers/underscores only)
@@ -495,12 +503,33 @@ const FOOTPRINT_SIZE_MM: Record<string, { width: number; height: number }> = {
   "SOIC-8":     { width: 3.9, height: 4.9 },
 }
 
-function lookupFootprintSize(footprint: string): { width: number; height: number } {
-  const sz = FOOTPRINT_SIZE_MM[footprint]
-  if (!sz) {
-    throw new Error(`Unknown footprint '${footprint}' — add to FOOTPRINT_SIZE_MM`)
+const KNOWN_FP_KEYS: Record<string, { width: number; height: number }> = {
+  "0603": { width: 4.45, height: 2.95 },
+  "0402": { width: 2.3, height: 1.5 },
+  "1206": { width: 6.0, height: 3.5 },
+  "MSOP-8": { width: 7.85, height: 4.35 },
+  "MSOP-10": { width: 7.85, height: 4.35 },
+  "SOIC-8": { width: 8.90, height: 6.41 },
+  "SOT-23": { width: 2.9, height: 1.3 },
+  "SOT-23-5": { width: 2.9, height: 1.6 },
+  "TSOT-23-5": { width: 2.9, height: 1.6 },
+}
+
+function shortFootprintName(name: string): string {
+  const trimmed = name.replace(/^kicad:[^/]+\//, "")
+  for (const key of Object.keys(KNOWN_FP_KEYS)) {
+    if (trimmed.includes(key)) return key
   }
-  return sz
+  return trimmed
+}
+
+function lookupFootprintSize(footprint: string): { width: number; height: number } {
+  const sz = FOOTPRINT_SIZE_MM[footprint] ?? KNOWN_FP_KEYS[footprint]
+  if (sz) return sz
+  const short = shortFootprintName(footprint)
+  const found = KNOWN_FP_KEYS[short]
+  if (found) return found
+  throw new Error(`Unknown footprint '${footprint}' — add to FOOTPRINT_SIZE_MM`)
 }
 
 const MATERIAL_MAP: Record<string, "fr4" | "fr1"> = { "FR4": "fr4", "FR1": "fr1" }

@@ -473,3 +473,36 @@ export function enforceTracePadClearance(
     return { ...el, route }
   })
 }
+
+export function mergeCollinearSegments(circuitJson: AnyCircuitElement[]): AnyCircuitElement[] {
+  return circuitJson.map((el: any) => {
+    if (el.type !== "pcb_trace" || !Array.isArray(el.route)) return el
+    const route = [...el.route]
+    const out: any[] = []
+    let i = 0
+    while (i < route.length) {
+      const seg = route[i]
+      if (seg.route_type !== "wire" || i === 0) {
+        out.push(seg)
+        i++
+        continue
+      }
+      const prev = out[out.length - 1]
+      if (prev.route_type !== "wire" || seg.layer !== prev.layer) {
+        out.push(seg)
+        i++
+        continue
+      }
+      const sameX = Math.abs(prev.x - seg.x) < 0.001
+      const sameY = Math.abs(prev.y - seg.y) < 0.001
+      if (sameX || sameY) {
+        prev.x = seg.x
+        prev.y = seg.y
+      } else {
+        out.push(seg)
+      }
+      i++
+    }
+    return { ...el, route: out }
+  })
+}
