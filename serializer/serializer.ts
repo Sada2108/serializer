@@ -45,7 +45,19 @@ import type {
 import { circuitJsonToKicadPcb } from "./kicadPcbWriter"
 import { snapCircuitJsonTracesToManhattan, enforceTracePadClearance } from "./pcbRouting"
 import { lookupSymbol, getGroundSymbolName, logMissingSymbol } from "./symbolLibrary"
-import { lookupKicadSymbol, hasKicadSymbol } from "./kicadSymbolLibrary"
+import { lookupKicadSymbol, hasKicadSymbol, setUseKicadSymbols } from "./kicadSymbolLibrary"
+import { getParsedFootprintSize, setUseParsedFootprints } from "./kicadFootprintLoader"
+
+// --------------------------------------------------------------------------- //
+// Env-flag wiring — gate KiCad library paths behind env vars
+// --------------------------------------------------------------------------- //
+
+if (process.env.OPEN_FORGE_USE_KICAD_SYMBOLS) {
+  setUseKicadSymbols(true)
+}
+if (process.env.OPEN_FORGE_USE_PARSED_FOOTPRINTS) {
+  setUseParsedFootprints(true)
+}
 
 // --------------------------------------------------------------------------- //
 // Types
@@ -572,7 +584,8 @@ function emitPcbComponent(
   y: number,
   rot: number,
 ): AnyCircuitElement {
-  const sz = lookupFootprintSize(comp.footprint)
+  const parsed = getParsedFootprintSize(comp.footprint)
+  const sz = parsed ?? lookupFootprintSize(comp.footprint)
   return {
     type: "pcb_component",
     pcb_component_id: `${comp.ref}_pcb`,
