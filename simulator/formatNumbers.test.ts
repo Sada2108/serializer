@@ -1,3 +1,4 @@
+import { describe, it, expect } from "bun:test"
 import { formatEng, formatFixed, formatAuto, formatVector, formatSimulationResult, formatValue } from "./formatNumbers"
 
 describe("formatNumbers", () => {

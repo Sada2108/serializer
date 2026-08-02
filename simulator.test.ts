@@ -212,6 +212,36 @@ describe("netlistFromCircuitJson", () => {
     const resultOp = netlistFromCircuitJson(circuitJson, nir, { analysisType: "op" })
     expect(resultOp.netlist).toContain("DC 5")
   })
+
+  it("accepts configurable timeStep for .tran analysis", () => {
+    // Minimal circuit: one resistor from VCC to GND
+    const circuitJson = [
+      { type: "source_component_base", name: "R1", component_type: "resistor", resistance: "1k" },
+      { type: "source_net", name: "VCC", is_power: true, is_ground: false },
+      { type: "source_net", name: "GND", is_power: false, is_ground: true },
+      { type: "source_trace", connected_source_port_ids: ["R1_source_port_1"], connected_source_net_ids: ["net_VCC"] },
+      { type: "source_trace", connected_source_port_ids: ["R1_source_port_2"], connected_source_net_ids: ["net_GND"] },
+    ]
+    const nir = {
+      nir_schema_version: "0.1",
+      circuit_json: {
+        components: [{ name: "R1", type: "resistor", resistance: "1k" }],
+        nets: [{ name: "VCC", isPower: true }, { name: "GND", isGroundNet: true }],
+      },
+    }
+
+    // Default — no timeStep
+    const defaultResult = netlistFromCircuitJson(circuitJson, nir, { analysisType: "tran" })
+    expect(defaultResult.netlist).toContain(".tran 1m 10m")
+
+    // Custom timeStep for TRAN
+    const customResult = netlistFromCircuitJson(circuitJson, nir, { analysisType: "tran", timeStep: "100u" })
+    expect(customResult.netlist).toContain(".tran 100u 10m")
+
+    // Custom timeStep for FFT
+    const fftResult = netlistFromCircuitJson(circuitJson, nir, { analysisType: "fft", timeStep: "5u" })
+    expect(fftResult.netlist).toContain(".tran 5u 10m")
+  })
 })
 
 // --------------------------------------------------------------------------- //

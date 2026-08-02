@@ -1,3 +1,4 @@
+import { describe, it, expect } from "bun:test"
 import { routeCircuit, type RoutedTrace, type RouteCircuitResult } from "./serializer/router";
 
 describe("routeCircuit", () => {
@@ -132,38 +133,61 @@ describe("routeCircuit", () => {
     expect(result.traces).toEqual([]);
     expect(result.error).toBeDefined();
     expect(typeof result.error).toBe("string");
-    expect(result.error.length).toBeGreaterThan(0);
+    if (result.error) {
+      expect(result.error.length).toBeGreaterThan(0);
+    }
   });
 
-  it("all wire segments are Manhattan (horizontal or vertical only)", async () => {
+  it("no 90-degree corners exist (all corners chamfered to 45 degrees)", async () => {
     const result: RouteCircuitResult = await routeCircuit(routableFixture);
     expect(result.success).toBe(true);
 
     for (const trace of result.traces) {
-      for (let i = 0; i < trace.route.length; i++) {
+      // Group consecutive same-layer wire segments into runs
+      let i = 0;
+      while (i < trace.route.length) {
         const seg = trace.route[i];
-        if (seg.route_type !== "wire") continue;
+        if (seg.route_type !== "wire") { i++; continue }
 
-        // Find the next wire segment on the same layer, stopping at vias
-        let nextWire: RoutedTrace["route"][number] | null = null;
-        for (let j = i + 1; j < trace.route.length; j++) {
-          const s = trace.route[j];
-          if (s.route_type === "via") break; // via ends this layer's run
-          if (s.route_type === "wire" && s.layer === seg.layer) {
-            nextWire = s;
-            break;
-          }
+        const runLayer = seg.layer
+        const runPoints: Array<{ x: number; y: number }> = []
+        let j = i
+        while (j < trace.route.length) {
+          const s = trace.route[j]
+          if (s.route_type === "via") break
+          if (s.route_type === "wire" && s.layer === runLayer) {
+            runPoints.push({ x: s.x, y: s.y })
+            j++
+          } else break
         }
-        if (!nextWire) continue;
 
-        const dx = Math.abs(nextWire.x - seg.x);
-        const dy = Math.abs(nextWire.y - seg.y);
-        const isManhattan = dx < 1e-6 || dy < 1e-6;
+        // For any three consecutive points, we should never see
+        // an axis-aligned turn (A→B horizontal AND B→C vertical,
+        // or A→B vertical AND B→C horizontal). Those are 90-degree
+        // corners that should have been chamfered.
+        for (let k = 1; k < runPoints.length - 1; k++) {
+          const prev = runPoints[k - 1]
+          const curr = runPoints[k]
+          const next = runPoints[k + 1]
 
-        expect(isManhattan).toBe(true);
+          const dx0 = Math.abs(curr.x - prev.x)
+          const dy0 = Math.abs(curr.y - prev.y)
+          const dx1 = Math.abs(next.x - curr.x)
+          const dy1 = Math.abs(next.y - curr.y)
+
+          const horiz0 = dy0 < 1e-6 && dx0 > 1e-6
+          const vert0 = dx0 < 1e-6 && dy0 > 1e-6
+          const horiz1 = dy1 < 1e-6 && dx1 > 1e-6
+          const vert1 = dx1 < 1e-6 && dy1 > 1e-6
+          const is90DegCorner = (horiz0 && vert1) || (vert0 && horiz1)
+
+          expect(is90DegCorner).toBe(false)
+        }
+
+        i = j
       }
     }
-  });
+  })
 
   it("no two same-layer wire segments cross without a via between them", async () => {
     const result: RouteCircuitResult = await routeCircuit(routableFixture);

@@ -28,3 +28,7 @@ _opamp_final.svg
 
 # untracked by request
 pcbRouting.test.ts
+
+# generated HTML pages (per-fixture; served dynamically or always-rewritten)
+dev-tools/current_sim.html
+dev-tools/current_schematic.html

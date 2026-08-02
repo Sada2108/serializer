@@ -1,4 +1,4 @@
-"""Open_Forge — Python wrapper end-to-end test (Layer 3).
+"""Serializer — Python wrapper end-to-end test (Layer 3).
 
 Loads the Libbrecht-Hall NIR fixture, calls `serializer.serialize_nir`
 (Python wrapper around `serializer.ts`), and asserts the returned payload is

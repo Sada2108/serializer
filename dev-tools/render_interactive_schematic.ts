@@ -1,7 +1,7 @@
 // Interactive schematic editor viewer driver.
 // Usage: bun run render_interactive_schematic.ts [fixture_name]
 //   fixture_name: rc_lowpass_001 (default) | voltage_divider_001 | opamp_noninv_001 | ...
-// Output: layer_three/dev-tools/<fixture>_schematic.html
+// Output: layer_three/dev-tools/current_schematic.html (always overwritten)
 
 import { readFileSync, writeFileSync, existsSync } from "fs"
 import { join } from "path"
@@ -25,14 +25,14 @@ const FIXTURES = {
 
 type FixtureName = keyof typeof FIXTURES
 
-// Map fixture -> simulator HTML filename
+// Map fixture -> simulator HTML filename (always current_sim.html)
 const SIMULATOR_MAP: Record<string, string> = {
-  opamp_noninv_001: "opamp_noninv_interactive.html",
-  voltage_divider_001: "voltage_divider_001_tran_interactive.html",
-  rc_lowpass_001: "rc_lowpass_001_tran_interactive.html",
-  rc_lowpass_ac_001: "rc_lowpass_ac_001_ac_interactive.html",
-  rc_lowpass_fft_001: "rc_lowpass_fft_001_fft_interactive.html",
-  lm358_noninv_001: "",
+  opamp_noninv_001: "current_sim.html",
+  voltage_divider_001: "current_sim.html",
+  rc_lowpass_001: "current_sim.html",
+  rc_lowpass_ac_001: "current_sim.html",
+  rc_lowpass_fft_001: "current_sim.html",
+  lm358_noninv_001: "current_sim.html",
 }
 
 function injectPowerSymbols(circuitJson: any[], nir: any): any[] {
@@ -243,7 +243,7 @@ async function main() {
     process.exit(1)
   }
 
-  const outHtml = join(import.meta.dir, fixtureName + "_schematic.html")
+  const outHtml = join(import.meta.dir, "current_schematic.html")
 
   console.log("== Step 1 — serialize " + fixtureName + " NIR ==")
   const so = await serializeNirAsync(nir)

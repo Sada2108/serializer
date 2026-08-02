@@ -1,4 +1,4 @@
-// Open_Forge — ngspice ASCII .raw file parser (Layer 4 simulator).
+// Serializer — ngspice ASCII .raw file parser (Layer 4 simulator).
 //
 // Pure, side-effect-free parser for ngspice's ASCII .raw format (the format
 // produced by `set filetype=ascii` followed by `write <file>.raw` in a

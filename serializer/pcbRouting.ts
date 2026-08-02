@@ -51,6 +51,7 @@ export function circuitJsonToSimpleRouteJson(circuitJson: AnyCircuitElement[]): 
   // pads belonging to other nets. Each pad obstacle's connectedTo contains
   // the net name, allowing only that net to route through the pad area.
   const smtpads = circuitJson.filter((e: any) => e.type === "pcb_smtpad") as any[]
+  const platedHoles = circuitJson.filter((e: any) => e.type === "pcb_plated_hole") as any[]
   const pcbCompById = new Map(pcbComponents.map((c: any) => [c.pcb_component_id, c]))
   const portByPcbPortId = new Map(pcbPorts.map((p: any) => [p.pcb_port_id, p]))
   const traceBySrcPortId = new Map<string, any>()
@@ -61,7 +62,8 @@ export function circuitJsonToSimpleRouteJson(circuitJson: AnyCircuitElement[]): 
   }
   const netIdToName = new Map(sourceNets.map((n: any) => [n.source_net_id, n.name]))
 
-  for (const pad of smtpads) {
+  const allPads = [...smtpads, ...platedHoles]
+  for (const pad of allPads) {
     const port = portByPcbPortId.get(pad.pcb_port_id)
     if (!port?.source_port_id) continue
     const trace = traceBySrcPortId.get(port.source_port_id)
@@ -73,13 +75,28 @@ export function circuitJsonToSimpleRouteJson(circuitJson: AnyCircuitElement[]): 
     const comp = pcbCompById.get(pad.pcb_component_id)
     const layer = comp?.layer === "top" ? ["top"] : comp?.layer === "bottom" ? ["bottom"] : ["top"]
 
+    let pWidth = pad.width ?? 0.6
+    let pHeight = pad.height ?? 0.6
+    if (pad.type === "pcb_plated_hole") {
+      if (pad.shape === "circular_hole_with_rect_pad") {
+        pWidth = pad.rect_pad_width ?? 1.7
+        pHeight = pad.rect_pad_height ?? 1.7
+      } else {
+        const d = pad.outer_diameter ?? 1.7
+        pWidth = d
+        pHeight = d
+      }
+    }
+
+    const obsId = pad.type === "pcb_plated_hole" ? pad.pcb_plated_hole_id : pad.pcb_smtpad_id
+
     obstacles.push({
-      obstacleId: `pad_${pad.pcb_smtpad_id}`,
+      obstacleId: `pad_${obsId}`,
       type: "rect",
       layers: layer,
       center: { x: pad.x, y: pad.y },
-      width: (pad.width ?? 0.6) + 0.4,  // Add clearance margin (KiCad requires 0.2mm clearance + 0.2mm track half-width)
-      height: (pad.height ?? 0.6) + 0.4,
+      width: pWidth + 0.4,  // Add clearance margin (KiCad requires 0.2mm clearance + 0.2mm track half-width)
+      height: pHeight + 0.4,
       connectedTo: [netName],
     } as Obstacle)
   }
@@ -157,11 +174,75 @@ export function circuitJsonToSimpleRouteJson(circuitJson: AnyCircuitElement[]): 
   return simpleRouteJson
 }
 
+function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+/**
+ * Match solver traces to connection names by comparing endpoint positions.
+ * The CapacityMeshSolver may reorder traces internally, so index-based
+ * assignment is unreliable.  This function finds the best permutation.
+ */
+function matchTracesToNames(
+  routedTraces: RoutedTrace[],
+  connectionNames: string[],
+  pointsToConnect: { name: string; points: { x: number; y: number }[] }[],
+): string[] {
+  const n = routedTraces.length
+  const result = new Array<string>(n)
+  const used = new Set<number>()
+
+  for (let i = 0; i < n; i++) {
+    const route = routedTraces[i].route
+    const first = route[0]
+    const last = route[route.length - 1]
+
+    let bestIdx = -1
+    let bestDist = Infinity
+    for (let j = 0; j < pointsToConnect.length; j++) {
+      if (used.has(j)) continue
+      const pts = pointsToConnect[j].points
+      if (pts.length < 2) continue
+      const d = Math.min(
+        dist(first, pts[0]) + dist(last, pts[1]),
+        dist(first, pts[1]) + dist(last, pts[0]),
+      )
+      if (d < bestDist) {
+        bestDist = d
+        bestIdx = j
+      }
+    }
+    result[i] = bestIdx >= 0 ? pointsToConnect[bestIdx].name : `routed_net_${i}`
+    if (bestIdx >= 0) used.add(bestIdx)
+  }
+
+  return result
+}
+
 export function mergeRoutedTraces(
   circuitJson: AnyCircuitElement[],
   routedTraces: RoutedTrace[],
+  connectionNames?: string[],
+  simpleRouteJson?: any,
 ): AnyCircuitElement[] {
   const result = [...circuitJson]
+
+  // Build name list, matching solver output order to connection order
+  let names: string[]
+  if (connectionNames && simpleRouteJson?.connections) {
+    const pts = simpleRouteJson.connections.map((c: any) => ({
+      name: c.name,
+      points: c.pointsToConnect as { x: number; y: number }[],
+    }))
+    names = matchTracesToNames(routedTraces, connectionNames, pts)
+  } else if (connectionNames) {
+    names = [...connectionNames]
+    // Pad or trim to match trace count
+    while (names.length < routedTraces.length) names.push(`routed_net_${names.length}`)
+    names.length = routedTraces.length
+  } else {
+    names = routedTraces.map((_, i) => `routed_net_${i}`)
+  }
 
   // Remove old pcb_trace entries (the placeholder/ratsnest traces)
   const filtered = result.filter((e: any) => e.type !== "pcb_trace")
@@ -172,7 +253,7 @@ export function mergeRoutedTraces(
     filtered.push({
       type: "pcb_trace",
       pcb_trace_id: `routed_trace_${i}`,
-      connection_name: `routed_net_${i}`,
+      connection_name: names[i],
       route: routed.route.map((seg) => {
         if (seg.route_type === "wire") {
           return {
@@ -264,82 +345,124 @@ export async function routeCircuitJson(
     return { circuitJson, success: false, error: result.error }
   }
 
-  const merged = mergeRoutedTraces(clearedCircuitJson, result.traces)
+  const connectionNames = simpleRouteJson.connections.map((c: any) => c.name)
+  const merged = mergeRoutedTraces(clearedCircuitJson, result.traces, connectionNames, simpleRouteJson)
   return { circuitJson: merged, success: true }
 }
 
 /**
- * Snap all pcb_trace routes in CircuitJSON to Manhattan (horizontal/vertical)
- * routing. Diagonal wire segments are split into L-shaped orthogonal pairs.
+ * Chamfer all 90-degree corners in pcb_trace routes to 45-degree corners.
+ * Each Manhattan (L-shaped) corner is replaced with a 45-degree chamfered
+ * pair of points, producing a smooth octagonal-looking trace.
  * Vias and layer transitions are preserved.
  */
-export function snapCircuitJsonTracesToManhattan(
+export function chamferCircuitJsonTracesTo45Degree(
   circuitJson: AnyCircuitElement[],
 ): AnyCircuitElement[] {
   return circuitJson.map((el: any) => {
     if (el.type !== "pcb_trace" || !Array.isArray(el.route)) return el
-
-    const snapped = snapTraceRouteToManhattan(el.route)
-    return { ...el, route: snapped }
+    return { ...el, route: chamferTraceRoute(el.route) }
   })
 }
 
-function snapTraceRouteToManhattan(route: any[]): any[] {
-  const out: any[] = []
+const CHAMFER_FACTOR = 1 / 3
 
-  for (let i = 0; i < route.length; i++) {
+function chamferTraceRoute(route: any[]): any[] {
+  if (route.length < 3) return route
+
+  const out: any[] = []
+  let i = 0
+
+  while (i < route.length) {
     const seg = route[i]
 
     if (seg.route_type === "via") {
       out.push(seg)
+      i++
       continue
     }
 
-    if (seg.route_type !== "wire") {
-      out.push(seg)
-      continue
-    }
-
-    // Find the next wire on the same layer (stopping at vias)
-    let nextWire: any = null
-    for (let j = i + 1; j < route.length; j++) {
-      const s = route[j]
+    // Find the end of the current same-layer wire run
+    const runLayer = seg.layer
+    let runEnd = i + 1
+    while (runEnd < route.length) {
+      const s = route[runEnd]
       if (s.route_type === "via") break
-      if (s.route_type === "wire" && s.layer === seg.layer) {
-        nextWire = s
+      if (s.route_type === "wire" && s.layer === runLayer) {
+        runEnd++
+      } else {
         break
       }
     }
 
-    if (!nextWire) {
-      out.push(seg)
-      continue
+    // Collect points in this run
+    const points: any[] = []
+    for (let j = i; j < runEnd; j++) {
+      points.push({ ...route[j] })
     }
 
-    const dx = Math.abs(nextWire.x - seg.x)
-    const dy = Math.abs(nextWire.y - seg.y)
+    const chamfered = chamferPoints(points)
 
-    // Already Manhattan
-    if (dx < 1e-6 || dy < 1e-6) {
-      out.push(seg)
-      continue
+    for (const p of chamfered) {
+      out.push(p)
     }
 
-    // Diagonal — split into L-shape (horizontal first, then vertical)
-    out.push({ ...seg })
-    out.push({
-      ...seg,
-      x: nextWire.x,
-      y: seg.y,
-    })
-    out.push({
-      ...seg,
-      x: nextWire.x,
-      y: nextWire.y,
-    })
+    i = runEnd
   }
 
   return out
+}
+
+function chamferPoints(points: any[]): any[] {
+  if (points.length < 3) return points
+
+  const result: any[] = []
+  result.push({ ...points[0] })
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1]
+    const curr = points[i]
+    const next = points[i + 1]
+
+    const dx0 = curr.x - prev.x
+    const dy0 = curr.y - prev.y
+    const dx1 = next.x - curr.x
+    const dy1 = next.y - curr.y
+
+    const horiz0 = Math.abs(dy0) < 1e-6 && Math.abs(dx0) > 1e-6
+    const vert0 = Math.abs(dx0) < 1e-6 && Math.abs(dy0) > 1e-6
+    const horiz1 = Math.abs(dy1) < 1e-6 && Math.abs(dx1) > 1e-6
+    const vert1 = Math.abs(dx1) < 1e-6 && Math.abs(dy1) > 1e-6
+
+    const isCorner = (horiz0 && vert1) || (vert0 && horiz1)
+
+    if (!isCorner) {
+      result.push({ ...curr })
+      continue
+    }
+
+    const len0 = Math.abs(dx0) + Math.abs(dy0)
+    const len1 = Math.abs(dx1) + Math.abs(dy1)
+    const chamfer = Math.min(len0, len1) * CHAMFER_FACTOR
+    if (chamfer < 0.001) {
+      result.push({ ...curr })
+      continue
+    }
+
+    const sx0 = dx0 > 0 ? 1 : dx0 < 0 ? -1 : 0
+    const sy0 = dy0 > 0 ? 1 : dy0 < 0 ? -1 : 0
+    const sx1 = dx1 > 0 ? 1 : dx1 < 0 ? -1 : 0
+    const sy1 = dy1 > 0 ? 1 : dy1 < 0 ? -1 : 0
+
+    const d = { ...curr, x: curr.x - sx0 * chamfer, y: curr.y - sy0 * chamfer }
+    const e = { ...curr, x: curr.x + sx1 * chamfer, y: curr.y + sy1 * chamfer }
+
+    result.push(d)
+    result.push(e)
+  }
+
+  result.push({ ...points[points.length - 1] })
+  return result
 }
 
 const KICAD_CLEARANCE_MM = 0.25 // 0.2 clearance + 0.05 solder mask expansion
@@ -471,6 +594,26 @@ export function enforceTracePadClearance(
     })
 
     return { ...el, route }
+  })
+}
+
+export function removeZeroLengthSegments(circuitJson: AnyCircuitElement[]): AnyCircuitElement[] {
+  return circuitJson.map((el: any) => {
+    if (el.type !== "pcb_trace" || !Array.isArray(el.route)) return el
+    const route = el.route
+    const out: any[] = []
+    for (let i = 0; i < route.length; i++) {
+      const seg = route[i]
+      if (seg.route_type !== "wire") { out.push(seg); continue }
+      const next = i + 1 < route.length ? route[i + 1] : null
+      if (next && next.route_type === "wire") {
+        const dx = Math.abs(seg.x - next.x)
+        const dy = Math.abs(seg.y - next.y)
+        if (dx < 0.0001 && dy < 0.0001) continue // zero-length, skip
+      }
+      out.push(seg)
+    }
+    return { ...el, route: out }
   })
 }
 

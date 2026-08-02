@@ -1,7 +1,7 @@
 // Interactive SPICE simulator viewer driver using Plotly.js.
 // Usage: bun run render_interactive_simulator.ts [fixture_name]
 //   fixture_name: voltage_divider_001 (default) | opamp_noninv_001 | rc_lowpass_001
-// Output: layer_three/dev-tools/<fixture>_interactive.html
+// Output: layer_three/dev-tools/current_sim.html (always overwritten)
 
 import { spawn } from "child_process"
 import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "fs"
@@ -209,7 +209,7 @@ async function main() {
     process.exit(1)
   }
 
-  const outHtml = join(import.meta.dir, fixtureName + "_" + analysisType + "_interactive.html")
+  const outHtml = join(import.meta.dir, "current_sim.html")
 
   console.log("== Step 1 — serialize " + fixtureName + " NIR ==")
   const so = await serializeNirAsync(nir)
@@ -382,7 +382,7 @@ async function main() {
   // Read the HTML template and replace placeholders
   let html = readTemplate()
   html = replaceAll(html, "{{DESIGN_ID}}", designId)
-  html = replaceAll(html, "{{SCHEMATIC_FILE}}", fixtureName + "_schematic.html")
+  html = replaceAll(html, "{{SCHEMATIC_FILE}}", "current_schematic.html")
   html = replaceAll(html, "{{WARN_BANNER}}", warnBannerHtml)
   html = replaceAll(html, "{{PROBES_JSON}}", probeJson)
   html = replaceAll(html, "{{TIME_JSON}}", xValuesJson)
@@ -393,13 +393,17 @@ async function main() {
   html = replaceAll(html, "{{ANALYSIS_TYPE}}", analysisType)
 
   // Inject component slider hints from NIR fixture
-  const sliderHints = extractSliderHints(nir)
+  const sliderHints = extractSliderHints(nir as unknown as NirV11)
   html = replaceAll(html, "{{COMPONENTS_JSON}}", JSON.stringify(sliderHints))
 
-  // Inject analysis file map — explicit filenames because different analysis
-  // types may use different fixtures (e.g. rc_lowpass_001's AC analysis lives
-  // in rc_lowpass_ac_001_ac_interactive.html, not rc_lowpass_001_ac_*.html).
-  const analysisFileMap = buildAnalysisFileMap(fixtureName)
+  // Inject analysis file map — all analysis types use the same current_sim.html file
+  const analysisFileMap: Record<string, string> = {
+    tran: "current_sim.html",
+    op: "current_sim.html",
+    dc: "current_sim.html",
+    ac: "current_sim.html",
+    fft: "current_sim.html",
+  }
   html = replaceAll(html, "{{ANALYSIS_FILE_MAP}}", JSON.stringify(analysisFileMap))
 
   // Set the correct selected option in the dropdown
@@ -407,7 +411,7 @@ async function main() {
   html = replaceAll(html, "{{OP_SELECTED}}", analysisType === "op" ? "selected" : "")
   html = replaceAll(html, "{{DC_SELECTED}}", analysisType === "dc" ? "selected" : "")
   html = replaceAll(html, "{{AC_SELECTED}}", analysisType === "ac" ? "selected" : "")
-  html = replaceAll(html, "{{FFT_SELECTED}}", analysisType === "fft" ? "selected" : "")
+  html = replaceAll(html, "{{FFT_SELECTED}}", (analysisType as string) === "fft" ? "selected" : "")
 
   writeFileSync(outHtml, html, "utf8")
   console.log("   wrote " + outHtml)

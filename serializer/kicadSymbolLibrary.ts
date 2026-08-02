@@ -1,5 +1,11 @@
-import { readFileSync } from "fs"
-import { join } from "path"
+// KiCad symbol library — loads .kicad_sym files from the KiCad install
+// using the proper S-expression parser, behind useKicadSymbols flag.
+//
+// NOTE: Multi-unit symbols (e.g. LM358 which has 2 opamps) are rendered
+// as a single unit. This is a known limitation of the current implementation.
+
+import { getKicadSymbol, getBodySize, type KicadSymbolData, type KicadPin, type KicadGraphic } from "./kicadSymbolParser"
+import { KICAD_SYMBOL_MAP } from "./kicadSymbolParser"
 
 export interface KicadSymbolPort {
   x: number
@@ -35,212 +41,139 @@ export interface KicadSymbolDef {
   bodyBox: { x: number; y: number; width: number; height: number }
 }
 
-const SYMBOL_DIR = join(import.meta.dir, "kicad-symbols")
+// ---------------------------------------------------------------------------
+// Global flag
+// ---------------------------------------------------------------------------
 
-function parseKicadSym(content: string): KicadSymbolDef | null {
-  const symbolMatch = content.match(/\(symbol\s+"([^"]+)"/)
-  if (!symbolMatch) return null
-  const symName = symbolMatch[1]
+let _useKicadSymbols = false
 
+export function setUseKicadSymbols(v: boolean): void {
+  _useKicadSymbols = v
+}
+
+export function getUseKicadSymbols(): boolean {
+  return _useKicadSymbols
+}
+
+// ---------------------------------------------------------------------------
+// Cache & lookup
+// ---------------------------------------------------------------------------
+
+const cache = new Map<string, KicadSymbolDef>()
+
+function kicadSymbolDataToDef(
+  name: string,
+  library: string,
+  data: KicadSymbolData,
+): KicadSymbolDef {
   const primitives: KicadSymbolPrimitive[] = []
   const ports: KicadSymbolPort[] = []
 
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-
-  const rectRegex = /\(rectangle\s+\(start\s+([-\d.]+)\s+([-\d.]+)\)\s+\(end\s+([-\d.]+)\s+([-\d.]+)\)/g
-  let m: RegExpExecArray | null
-  while ((m = rectRegex.exec(content)) !== null) {
-    const x1 = parseFloat(m[1]), y1 = parseFloat(m[2])
-    const x2 = parseFloat(m[3]), y2 = parseFloat(m[4])
-    primitives.push({
-      type: "rectangle",
-      start: { x: Math.min(x1, x2), y: Math.min(y1, y2) },
-      end: { x: Math.max(x1, x2), y: Math.max(y1, y2) },
-      filled: content.substring(m.index, m.index + 200).includes("(type background)"),
-    })
-    minX = Math.min(minX, x1, x2)
-    minY = Math.min(minY, y1, y2)
-    maxX = Math.max(maxX, x1, x2)
-    maxY = Math.max(maxY, y1, y2)
+  // Use the first unit that has pins (the main symbol unit)
+  const unit = data.units.find((u) => u.pins.length > 0) || data.units[0]
+  if (!unit) {
+    return { name, library, description: "", primitives, ports, bodyBox: { x: 0, y: 0, width: 6, height: 4 } }
   }
 
-  const polylineRegex = /\(polyline\s+\(pts\s+((?:\(xy\s+[-\d.]+\s+[-\d.]+\)\s*)+)\)/g
-  while ((m = polylineRegex.exec(content)) !== null) {
-    const ptsStr = m[1]
-    const ptRegex = /\(xy\s+([-\d.]+)\s+([-\d.]+)\)/g
-    const points: { x: number; y: number }[] = []
-    let pm: RegExpExecArray | null
-    while ((pm = ptRegex.exec(ptsStr)) !== null) {
-      const px = parseFloat(pm[1]), py = parseFloat(pm[2])
-      points.push({ x: px, y: py })
-      minX = Math.min(minX, px)
-      minY = Math.min(minY, py)
-      maxX = Math.max(maxX, px)
-      maxY = Math.max(maxY, py)
-    }
-    if (points.length > 0) {
-      const strokeBlock = content.substring(m.index, m.index + 500)
-      const widthMatch = strokeBlock.match(/\(width\s+([-\d.]+)\)/)
-      const filledMatch = strokeBlock.match(/\(type\s+(background|solid)\)/)
+  for (const g of unit.graphics) {
+    if (g.type === "rectangle") {
+      primitives.push({
+        type: "rectangle",
+        start: { x: g.startX, y: g.startY },
+        end: { x: g.endX, y: g.endY },
+        filled: g.fillType === "background" || g.fillType === "solid",
+      })
+    } else if (g.type === "polyline") {
       primitives.push({
         type: "polyline",
-        points,
-        strokeWidth: widthMatch ? parseFloat(widthMatch[1]) : 0.254,
-        filled: !!filledMatch,
+        points: g.points,
+        filled: g.fillType === "background" || g.fillType === "solid",
+        strokeWidth: g.strokeWidth,
       })
-    }
-  }
-
-  const pinBlockRegex = /\(pin\s+(\w+)\s+(\w+)\s+\(at\s+([-\d.]+)\s+([-\d.]+)\s+(\d+)\)\s+\(length\s+([-\d.]+)\)/g
-  while ((m = pinBlockRegex.exec(content)) !== null) {
-    const dir = parseInt(m[5])
-    const len = parseFloat(m[6])
-    const px = parseFloat(m[3]), py = parseFloat(m[4])
-
-    let pinName = ""
-    let pinNumber = ""
-    const afterAt = content.substring(m.index + m[0].length, m.index + m[0].length + 600)
-    const nameMatch = afterAt.match(/\(name\s+"([^"]*)"/)
-    if (nameMatch) pinName = nameMatch[1]
-    const numMatch = afterAt.match(/\(number\s+"([^"]*)"/)
-    if (numMatch) pinNumber = numMatch[1]
-
-    const angleRad = (dir * Math.PI) / 180
-    const pinEndX = px + Math.cos(angleRad) * len
-    const pinEndY = py - Math.sin(angleRad) * len
-
-    ports.push({
-      x: px,
-      y: py,
-      name: pinName,
-      number: pinNumber,
-    })
-
-    primitives.push({
-      type: "pin",
-      pin: {
-        x: px,
-        y: py,
-        angle: dir,
-        length: len,
-        name: pinName,
-        number: pinNumber,
-        direction: m[1] as any,
-      },
-    })
-
-    minX = Math.min(minX, px, pinEndX)
-    minY = Math.min(minY, py, pinEndY)
-    maxX = Math.max(maxX, px, pinEndX)
-    maxY = Math.max(maxY, py, pinEndY)
-  }
-
-  const bodyBox = {
-    x: minX,
-    y: minY,
-    width: maxX - minX,
-    height: maxY - minY,
-  }
-
-  return { name: symName, library: "", description: "", primitives, ports, bodyBox }
-}
-
-function loadSymbol(filename: string): KicadSymbolDef | null {
-  try {
-    const content = readFileSync(join(SYMBOL_DIR, filename), "utf8")
-    return parseKicadSym(content)
-  } catch {
-    return null
-  }
-}
-
-function loadSymbolWithExtends(filename: string, extendsName?: string): KicadSymbolDef | null {
-  const sym = loadSymbol(filename)
-  if (!sym) return null
-
-  if (extendsName) {
-    const base = loadSymbol(extendsName + ".kicad_sym")
-    if (base) {
-      sym.ports = base.ports
-      sym.primitives = base.primitives.filter(p => p.type !== "pin")
-      sym.bodyBox = base.bodyBox
-      for (const pin of base.primitives.filter(p => p.type === "pin")) {
-        sym.primitives.push(pin)
+    } else if (g.type === "circle") {
+      // Approximate circle as polyline
+      const segs = 12
+      const pts: { x: number; y: number }[] = []
+      for (let i = 0; i <= segs; i++) {
+        const a = (i / segs) * 2 * Math.PI
+        pts.push({ x: g.cx + Math.cos(a) * g.r, y: g.cy + Math.sin(a) * g.r })
+      }
+      primitives.push({ type: "polyline", points: pts, filled: g.fillType === "background" })
+    } else if (g.type === "arc") {
+      // Approximate arc as polyline
+      const cx = g.mid.x, cy = g.mid.y
+      const r = Math.sqrt((g.start.x - cx) ** 2 + (g.start.y - cy) ** 2)
+      if (r > 0) {
+        const aStart = Math.atan2(g.start.y - cy, g.start.x - cx)
+        const aEnd = Math.atan2(g.end.y - cy, g.end.x - cx)
+        const segs = 8
+        const pts: { x: number; y: number }[] = []
+        for (let i = 0; i <= segs; i++) {
+          const t = aStart + (i / segs) * (aEnd - aStart)
+          pts.push({ x: cx + Math.cos(t) * r, y: cy + Math.sin(t) * r })
+        }
+        primitives.push({ type: "polyline", points: pts })
       }
     }
   }
 
-  return sym
-}
-
-let _cache: Record<string, KicadSymbolDef | null> = {}
-
-function getSymbol(key: string): KicadSymbolDef | null {
-  if (_cache[key] !== undefined) return _cache[key]
-  _cache[key] = null
-
-  const loader: Record<string, () => KicadSymbolDef | null> = {
-    "R": () => loadSymbol("R.kicad_sym"),
-    "C": () => loadSymbol("C.kicad_sym"),
-    "GND": () => loadSymbol("GND.kicad_sym"),
-    "LM358": () => loadSymbolWithExtends("LM358.kicad_sym", "LM2904"),
-    "LM2904": () => loadSymbol("LM2904.kicad_sym"),
-  }
-
-  if (loader[key]) _cache[key] = loader[key]()
-  return _cache[key]
-}
-
-interface KicadSymbolEntry {
-  kicadName: string
-  library: string
-  symbolDef: KicadSymbolDef | null
-}
-
-const KICAD_MAP: Record<string, KicadSymbolEntry> = {
-  resistor:  { kicadName: "R",    library: "Device",               symbolDef: null },
-  capacitor: { kicadName: "C",    library: "Device",               symbolDef: null },
-  ground:    { kicadName: "GND",  library: "Power",                symbolDef: null },
-  opamp:     { kicadName: "LM358", library: "Amplifier_Operational", symbolDef: null },
-}
-
-const PART_NUMBER_MAP: Record<string, { kicadName: string; library: string }> = {
-  "LM358":  { kicadName: "LM358",  library: "Amplifier_Operational" },
-  "LM2904": { kicadName: "LM2904", library: "Amplifier_Operational" },
-  "TL072":  { kicadName: "TL072",  library: "Amplifier_Operational" },
-  "TL082":  { kicadName: "TL082",  library: "Amplifier_Operational" },
-  "OPA344": { kicadName: "LM358",  library: "Amplifier_Operational" },
-}
-
-function initSymbol(entry: KicadSymbolEntry): void {
-  if (entry.symbolDef !== null) return
-  entry.symbolDef = getSymbol(entry.kicadName)
-}
-
-export function lookupKicadSymbol(componentType: string, partNumber?: string): KicadSymbolDef | null {
-  if (partNumber && PART_NUMBER_MAP[partNumber]) {
-    const mapped = PART_NUMBER_MAP[partNumber]
-    const key = `part:${partNumber}`
-    if (!_cache[key]) {
-      const sym = getSymbol(mapped.kicadName)
-      _cache[key] = sym
+  for (const pin of unit.pins) {
+    ports.push({ x: pin.x, y: pin.y, name: pin.name, number: pin.number })
+    const dirMap: Record<string, string> = {
+      input: "input", output: "output", bidirectional: "passive",
+      passive: "passive", power_in: "power_in", power_out: "power_out",
+      open_collector: "output", open_emitter: "output", tri_state: "output",
     }
-    return _cache[key]
+    primitives.push({
+      type: "pin",
+      pin: {
+        x: pin.x,
+        y: pin.y,
+        angle: pin.orientation,
+        length: pin.length,
+        name: pin.name,
+        number: pin.number,
+        direction: (dirMap[pin.electricalType] || "passive") as any,
+      },
+    })
   }
 
-  const entry = KICAD_MAP[componentType]
-  if (!entry) return null
-  initSymbol(entry)
-  return entry.symbolDef
+  const bb = getBodySize(data)
+  const bodyBox = { x: -bb.width / 2, y: -bb.height / 2, width: bb.width, height: bb.height }
+
+  return { name, library, description: "", primitives, ports, bodyBox }
+}
+
+export function lookupKicadSymbol(
+  componentType: string,
+  partNumber?: string,
+): KicadSymbolDef | null {
+  if (!_useKicadSymbols) return null
+
+  const mapping = KICAD_SYMBOL_MAP[componentType]
+  if (!mapping) return null
+
+  const key = `${mapping.library}:${mapping.symbol}`
+  const cached = cache.get(key)
+  if (cached) return cached
+
+  try {
+    const data = getKicadSymbol(mapping.library, mapping.symbol)
+    const def = kicadSymbolDataToDef(mapping.symbol, mapping.library, data)
+    cache.set(key, def)
+    return def
+  } catch (e) {
+    console.warn(`[kicad-symbols] ${key}: ${e}`)
+    return null
+  }
 }
 
 export function hasKicadSymbol(componentType: string, partNumber?: string): boolean {
-  if (partNumber && PART_NUMBER_MAP[partNumber]) return true
-  return componentType in KICAD_MAP
+  if (!_useKicadSymbols) return false
+  return componentType in KICAD_SYMBOL_MAP
 }
 
 export function getKicadSymbolName(componentType: string, partNumber?: string): string | null {
-  if (partNumber && PART_NUMBER_MAP[partNumber]) return PART_NUMBER_MAP[partNumber].kicadName
-  const entry = KICAD_MAP[componentType]
-  return entry?.kicadName ?? null
+  const mapping = KICAD_SYMBOL_MAP[componentType]
+  return mapping?.symbol ?? null
 }

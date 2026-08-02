@@ -17,6 +17,7 @@ import {
   detectNirSchemaVersion,
 } from "./serializer/serializer"
 import { libbrechtHallNir, instrumentationAmpNir } from "./serializer/fixtures"
+import { setUseKicadSymbols } from "./serializer/kicadSymbolLibrary"
 
 // --------------------------------------------------------------------------- //
 // Schema detection
@@ -86,8 +87,8 @@ describe("renderCircuitJson", () => {
   })
 
   it("falls back (not crashes) when schematic-viewer is requested but absent", () => {
-    const prev = process.env.OPEN_FORGE_VIEWER
-    process.env.OPEN_FORGE_VIEWER = "schematic-viewer"
+    const prev = process.env.KICAD_VIEWER
+    process.env.KICAD_VIEWER = "schematic-viewer"
     try {
       const cj = nirToCircuitJson(libbrechtHallNir)
       const { viewerUsed } = renderCircuitJson(cj)
@@ -95,8 +96,8 @@ describe("renderCircuitJson", () => {
       expect(viewerUsed === "circuit-to-svg" ||
              viewerUsed === "@tscircuit/schematic-viewer").toBe(true)
     } finally {
-      if (prev === undefined) delete process.env.OPEN_FORGE_VIEWER
-      else process.env.OPEN_FORGE_VIEWER = prev
+      if (prev === undefined) delete process.env.KICAD_VIEWER
+      else process.env.KICAD_VIEWER = prev
     }
   })
 })
@@ -299,6 +300,7 @@ describe("loud failure on malformed NIR", () => {
 
 describe("LM358 KiCad symbol integration", () => {
   it("serializes LM358 fixture with KiCad symbol primitives", () => {
+    setUseKicadSymbols(true)
     const { lm358NoninvNir } = require("./serializer/fixtures")
     const result = serializeNir(lm358NoninvNir)
     expect(result.circuitJson.length).toBeGreaterThan(0)
@@ -310,7 +312,7 @@ describe("LM358 KiCad symbol integration", () => {
 
     const u1 = schComps.find(
       (el: any) => el.source_component_id === "U1_source"
-    )
+    ) as any
     expect(u1).toBeDefined()
     expect(u1.is_box_with_pins).toBe(false)
 
@@ -328,6 +330,7 @@ describe("LM358 KiCad symbol integration", () => {
   })
 
   it("renders SVG with KiCad triangle symbol for LM358", () => {
+    setUseKicadSymbols(true)
     const { lm358NoninvNir } = require("./serializer/fixtures")
     const result = serializeNir(lm358NoninvNir)
     expect(result.svg).toContain("<svg")

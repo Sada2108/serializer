@@ -1,4 +1,4 @@
-// Open_Forge — Simulation result pretty-printer (Layer 4).
+// Serializer — Simulation result pretty-printer (Layer 4).
 //
 // Wires formatSimulationResult into a human-readable console output.
 // Does NOT modify simulateNetlist() return type — keeps raw numbers intact

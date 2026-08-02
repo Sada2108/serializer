@@ -64,6 +64,7 @@
     "height": 20,
     "layers": 2,
     "thickness": 1.6,
+    "thickness_mm": 1.6,
     "material": "FR4"
   }
 }

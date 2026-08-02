@@ -1,4 +1,4 @@
-"""Open_Forge — Team E simulator, Python wrapper (Layer 4).
+"""Serializer — Team E simulator, Python wrapper (Layer 4).
 
 Thin Python wrapper around `simulator/simulator.ts` and
 `simulator/netlistFromCircuitJson.ts`.  Drives ngspice via the TypeScript

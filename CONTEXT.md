@@ -1,4 +1,4 @@
-# Open_Forge — Layer 3 Serializer & Simulator: Full Project Context
+# Serializer — Layer 3 Serializer & Simulator: Full Project Context
 
 > **Purpose:** This document is a complete reference for an AI assistant (Claude) working on this codebase. It covers architecture, every file's role, data schemas, conventions, known issues, and current state as of the latest commit.
 
@@ -91,10 +91,10 @@ interface Nir {
 - Components use `name` field (not `ref`), `type` field (not `component_type`).
 - Only `libbrechtHallNir` fixture uses this format.
 
-### v1.1 (Instrumentation) — Current
+### v1.1 / v1.2 (Instrumentation) — Current
 ```typescript
 interface NirV11 {
-  schema_version: "1.1"
+  schema_version: "1.1" | "1.2"
   design_id: string
   prompt?: string
   design_methodology?: string
@@ -107,6 +107,7 @@ interface NirV11 {
   board_spec: NirV11BoardSpec
   performance_specs?: NirV11PerformanceSpecs
   bom?: unknown[]
+  [key: string]: unknown            // open root: unknown keys pass through
 }
 
 interface NirV11Component {
@@ -128,6 +129,8 @@ interface NirV11Component {
   position_confidence?: number
   position_source?: string
   confidence_by_layer?: Record<string, number | null>
+  _NEW_courtyard_mm?: { width: number; height: number }
+  _NEW_thermal_relief_required?: boolean
 }
 
 interface NirV11NetlistEntry {
@@ -136,6 +139,8 @@ interface NirV11NetlistEntry {
   connections: { ref: string; pin_name: string; pin_number: string | number }[]
   source_rule?: string
   net_confidence?: number
+  _NEW_controlled_impedance?: { target_ohms: number | null } | null
+  _NEW_routing_priority_tier?: number   // advisory only; never a required input
 }
 
 interface NirV11BoardSpec {
@@ -147,12 +152,22 @@ interface NirV11BoardSpec {
   min_clearance_mm?: number
   min_via_drill_mm?: number
   surface_finish?: string
+  _NEW_stackup_arrangement?: unknown
+  _NEW_prepreg_core_note?: unknown
+  _NEW_annular_ring_min_mm?: number
 }
 ```
 
+**v1.2 = relaxed v1.1.** No separate `NirV12` type and no version-forked parse paths — the same `NirV11` parser handles both:
+- `schema_version` union `"1.1" | "1.2"`; the strict `requireKeys` gates in `serializer.ts` (parse paths) accept `"1.1"` or `"1.2"`.
+- `detectNirVersion` (netlistFromCircuitJson.ts) treats `schema_version === "1.2"` as `"v1.1"`.
+- Root type stays open (`[key: string]: unknown`) so `custom_symbols_required` / `hierarchical_sheets` land later as pass-through.
+- `_NEW_*` fields are optional and advisory (esp. `_NEW_routing_priority_tier` and `component_groups`) — never required inputs.
+- `NirV11PerformanceSpecs` is loose: `[name: string]: Record<string, unknown> & { unit?: string }`.
+
 ### Schema Detection (`detectNirSchemaVersion`)
 Multi-heuristic approach:
-1. Check `schema_version === "1.1"` → v1.1
+1. Check `schema_version === "1.1"` or `"1.2"` → v1.1/v1.2
 2. Check `nir_schema_version === "0.1"` → v0.1
 3. Structural: presence of `circuit_json.components` → v0.1; `components` + `netlist` + `board_spec` → v1.1
 4. Throws on unrecognized schemas
@@ -163,7 +178,7 @@ Multi-heuristic approach:
 
 ### 4.1 Core Serializer
 
-#### `serializer/serializer.ts` (908 lines) — MAIN ENTRY POINT
+#### `serializer/serializer.ts` (1135 lines) — MAIN ENTRY POINT
 **Purpose:** Converts NIR → Circuit JSON → SVG and optionally → KiCad `.kicad_pcb`.
 
 **Key exports:**
@@ -171,7 +186,7 @@ Multi-heuristic approach:
 |--------|-----------|-------|
 | `serializeNir` | `(nir) => SerializerOutput` | Sync. No KiCad output. |
 | `serializeNirAsync` | `(nir) => Promise<SerializerOutput>` | Async. Full pipeline: CircuitRunner + Manhattan snap + clearance + KiCad. |
-| `nirToCircuitJson` | `(nir) => AnyCircuitElement[]` | Sync. **Note:** Name collision — async version at line 82 is shadowed by sync at line 870. |
+| `nirToCircuitJson` | `(nir) => AnyCircuitElement[]` | Sync. **Note:** Name collision — async version at line 96 is shadowed by sync at line 1098. |
 | `nirToCircuitJsonAsync` | `(nir) => Promise<AnyCircuitElement[]>` | Async v1.1 via CircuitRunner. |
 | `renderCircuitJson` | `(circuitJson) => { svg, viewerUsed }` | SVG rendering via circuit-to-svg. |
 | `generateTscircuitJsx` | `(nir: NirV11) => string` | Generates tscircuit JSX string from v1.1 NIR. |
@@ -185,7 +200,7 @@ Multi-heuristic approach:
 4. `enforceTracePadClearance(snapped)` → Pad-safe traces
 5. `circuitJsonToKicadPcb(cleared)` → KiCad string (only if `pcb_board` present)
 
-**Environment variable:** `OPEN_FORGE_VIEWER` — if `"schematic-viewer"`, tries `@tscircuit/schematic-viewer` before falling back to `circuit-to-svg`.
+**Environment variable:** `KICAD_VIEWER` — if `"schematic-viewer"`, tries `@tscircuit/schematic-viewer` before falling back to `circuit-to-svg`.
 
 **Footprint mapping (`FOOTPRINT_MAP`):**
 ```
@@ -218,6 +233,12 @@ ldo_regulator → chip, digital_potentiometer → chip, mcu → chip, logic → 
 - GND: `emitPowerSymbol()` — filled triangle with lead line (sync path)
 - Power nets: `emitPowerSymbol()` — arrow label with lead line (sync path)
 
+**Sheet-context threading (schema v1.2 rollout):**
+- `DEFAULT_SCHEMATIC_SHEET_ID = "schematic_sheet_default"`.
+- `generateCircuitJsonFromNir` does NOT emit a `schematic_sheet` element — only `schematic_sheet_id` on schematic elements.
+- A defaulted `schematicSheetId` parameter is threaded through every schematic emit helper: `emitSchematicComponent`, `makeSymbolGeometry`, `schematicLine`, `schematicPath`, `schematicBox`, `emitPowerSymbol`. Every emitted `schematic_*` element carries `schematic_sheet_id`; PCB/scada elements (`pcb_*`, `source_*`) must NOT.
+- Future multi-sheet grouping can key off `schematic_sheet_id` without retrofitting emit helpers.
+
 **Sync fallback layout (`generateCircuitJsonFromNir`):**
 - Grid: 4 columns, 12mm pitch, origin (10,10)
 - Board: 80x60mm default from `NAIVE_BOARD_FALLBACK_MM`
@@ -225,7 +246,7 @@ ldo_regulator → chip, digital_potentiometer → chip, mcu → chip, logic → 
 
 ---
 
-#### `serializer/kicadPcbWriter.ts` (535 lines)
+#### `serializer/kicadPcbWriter.ts` (640 lines)
 **Purpose:** Circuit JSON → KiCad `.kicad_pcb` S-expression file (KiCad 10 / version 20260206).
 
 **Key export:** `circuitJsonToKicadPcb(circuitJson: AnyCircuitElement[]): string`
@@ -257,7 +278,7 @@ ldo_regulator → chip, digital_potentiometer → chip, mcu → chip, logic → 
 
 ---
 
-#### `serializer/pcbRouting.ts` (475 lines)
+#### `serializer/pcbRouting.ts` (651 lines)
 **Purpose:** Routing utilities — placement clearance, Manhattan snap, trace-pad clearance, autorouter bridge.
 
 **Key exports:**
@@ -290,7 +311,7 @@ KICAD_CLEARANCE_MM = 0.25mm (0.2 clearance + 0.05 solder mask)
 
 ---
 
-#### `serializer/router.ts` (174 lines)
+#### `serializer/router.ts` (268 lines)
 **Purpose:** Wraps `@tscircuit/capacity-autorouter` (v0.0.692) `CapacityMeshSolver`.
 
 **Key export:** `routeCircuit(simpleRouteJson) => Promise<RouteCircuitResult>`
@@ -316,7 +337,7 @@ interface RouteCircuitResult {
 
 ---
 
-#### `serializer/fixtures/index.ts` (136 lines)
+#### `serializer/fixtures/index.ts` (163 lines)
 **Purpose:** Exports typed fixture data and all NIR TypeScript interfaces.
 
 **Exported fixtures:**
@@ -330,7 +351,24 @@ interface RouteCircuitResult {
 | `rcLowpassAcNir` | raw JSON | `rc_lowpass_ac_001.nir.json` |
 | `rcLowpassFftNir` | raw JSON | `rc_lowpass_fft_001.nir.json` |
 
-All v1.1 fixture files are in `serializer/fixtures/`.
+Plus raw JSON fixtures: `idk.nir.json`, `lm358_noninv_001.nir.json`, and `new schema.nir.json` (the v1.2 sample — note the space in the filename).
+
+All v1.1/v1.2 fixture files are in `serializer/fixtures/`.
+
+---
+
+#### `serializer/kicadSymbolLibrary.ts`
+**Purpose:** KiCad symbol library lookup / parsing. `setUseKicadSymbols` / `lookupKicadSymbol` / `hasKicadSymbol` gate the KiCad-symbol path.
+
+#### `serializer/kicadSymbolParser.ts`
+**Purpose:** Parses KiCad symbol library files into `KicadSymbolData` (units, pins, graphics). `KICAD_TO_SVG_SCALE` maps symbol units to SVG coordinates.
+
+#### `serializer/kicadSymbolToCircuitJson.ts` (231 lines)
+**Purpose:** KiCad symbol → Circuit JSON schematic elements (drop-in replacement for `makeSymbolGeometry()` when `useKicadSymbols` is true).
+
+- Exports `kicadSymbolToCircuitJson(fixture, sid, cx, cy, bodySize, sym, schematicSheetId?)`.
+- Renders unit graphics (rectangle/polyline/circle/arc) and pins (line + `schematic_port`) with a shared `DEFAULT_SCHEMATIC_SHEET_ID = "schematic_sheet_default"`.
+- **Note:** Not currently wired into the live emit path — the inline KiCad branch inside `emitSchematicComponent` (serializer.ts) is the active KiCad path. All elements carry `schematic_sheet_id` for when the standalone path is connected.
 
 ---
 
@@ -376,7 +414,7 @@ Handles:
 
 ---
 
-#### `simulator/netlistFromCircuitJson.ts` (595 lines) — SPICE netlist generator
+#### `simulator/netlistFromCircuitJson.ts` (594 lines) — SPICE netlist generator
 **Purpose:** Circuit JSON + NIR → SPICE netlist string.
 
 ```typescript
@@ -565,25 +603,25 @@ Epsilon clamping: values below `1e-12` snap to zero (hides IEEE-754 solver noise
 
 ### 4.4 Tests
 
-#### `serializer.test.ts` (16 tests)
-Schema detection (6), v0.1 legacy (3), v1.1 path (7), loud-failure (5).
+#### `serializer.test.ts` (24 tests)
+Schema detection, v0.1 legacy, v1.1 path, DRC verification, loud-failure.
 
-#### `simulator.test.ts` (15 tests)
-`parseRawFile` (6), `netlistFromCircuitJson` (4), `simulateNetlist` (3), ngspice binary (2). Skips if ngspice unavailable.
+#### `simulator.test.ts` (17 tests)
+`parseRawFile`, `netlistFromCircuitJson`, `simulateNetlist`, ngspice binary. Skips if ngspice unavailable.
 
 #### `kicadPcbWriter.test.ts` (17 tests)
-KiCad output structure (11), pad rotation regression (2), net-to-net short detection (2), pad position correctness (2).
+KiCad output structure, pad rotation regression, net-to-net short detection, pad position correctness.
 
 #### `pcbRouting.test.ts` (8 tests)
-`circuitJsonToSimpleRouteJson` (3), `routeCircuitJson` e2e (2), `mergeRoutedTraces` (1), `enforcePlacementClearance` (2).
+`circuitJsonToSimpleRouteJson`, `routeCircuitJson` e2e, `mergeRoutedTraces`, `enforcePlacementClearance`.
 
-#### `router.test.ts` (8 tests)
-Route shape (1), invalid input (1), Manhattan orthogonality (1), same-layer crossing detection (1), plus additional edge case tests.
+#### `router.test.ts` (4 tests)
+Route shape, invalid input, 45°-corner chamfer verification, same-layer crossing detection.
 
-#### `formatNumbers.test.ts` (28 tests)
-`formatEng` (10), `formatFixed` (4), `formatAuto` (4), `formatVector` (2), `formatSimulationResult` (2), `formatValue` (3), epsilon clamping (3).
+#### `formatNumbers.test.ts` (33 tests)
+`formatEng`, `formatFixed`, `formatAuto`, `formatVector`, `formatSimulationResult`, `formatValue`, epsilon clamping.
 
-**Total: 100 tests, 0 failures** (as of latest run).
+**Total: 103 tests, 0 failures** (as of latest run).
 
 ---
 
@@ -636,19 +674,19 @@ Circuit JSON + NIR
 | `pcb_board` | `width, height, thickness, num_layers, material, center` | Board definition |
 | `source_component_base` | `source_component_id, name, component_type, footprint` | Component identity (no value — value is in NIR) |
 | `pcb_component` | `pcb_component_id, source_component_id, center, layer, rotation, width, height` | PCB placement |
-| `schematic_component` | `schematic_component_id, source_component_id, center, size, symbol_display_value` | Schematic symbol |
+| `schematic_component` | `schematic_component_id, source_component_id, center, size, symbol_display_value, schematic_sheet_id` | Schematic symbol |
 | `source_net` | `source_net_id, name, is_power, is_ground, is_analog_signal` | Net identity |
 | `source_trace` | `source_trace_id, connected_source_port_ids, connected_source_net_ids` | Connectivity |
 | `source_port` | `source_port_id, name, schematic_component_id, pcb_port_id` | Pin identity |
-| `schematic_port` | `schematic_port_id, source_port_id, center, display_pin_label` | Pin on schematic |
+| `schematic_port` | `schematic_port_id, source_port_id, center, display_pin_label, schematic_sheet_id` | Pin on schematic |
 | `pcb_port` | `pcb_port_id, source_port_id, x, y, layers` | Pin on PCB |
 | `pcb_smtpad` | `pcb_smtpad_id, pcb_component_id, pcb_port_id, x, y, width, height` | Copper pad |
 | `pcb_trace` | `pcb_trace_id, connection_name, route: [{route_type, x, y, width, layer, to_layer, from_layer}]` | Routed trace |
 | `pcb_via` | `pcb_via_id, x, y, from_layer, to_layer` | Via |
-| `schematic_line` | `schematic_line_id, schematic_component_id, x1, y1, x2, y2, color, is_dashed` | Schematic drawing |
-| `schematic_path` | `schematic_path_id, schematic_component_id, points[], is_filled` | Schematic path |
-| `schematic_box` | `schematic_component_id, x, y, width, height, is_dashed` | IC body outline |
-| `schematic_text` | `schematic_text_id, text, font_size, position, rotation, color` | Text labels |
+| `schematic_line` | `schematic_line_id, schematic_component_id, x1, y1, x2, y2, color, is_dashed, schematic_sheet_id` | Schematic drawing |
+| `schematic_path` | `schematic_path_id, schematic_component_id, points[], is_filled, schematic_sheet_id` | Schematic path |
+| `schematic_box` | `schematic_component_id, x, y, width, height, is_dashed, schematic_sheet_id` | IC body outline |
+| `schematic_text` | `schematic_text_id, text, font_size, position, rotation, color, schematic_sheet_id` | Text labels |
 
 ---
 
@@ -678,15 +716,17 @@ Circuit JSON + NIR
 
 ## 8. KiCad DRC Status
 
-**Latest DRC run:** 0 errors, 0 unconnected items, 3 silk_over_copper warnings.
+**rc_lowpass (`_gen_pcb.ts rc_lowpass`):** 0 violations, 0 unconnected items — clean.
 
-The 3 remaining warnings are from R3, R4, R5 (0402 passives packed in a row). Both perpendicular placement directions collide with neighboring components/pads, so the code falls back to center placement where the 0.8mm text bounding box slightly overlaps pad solder mask. These are warnings (not errors) — the fab house clips silkscreen where it overlaps pads.
+**opamp (`_gen_pcb.ts opamp`):** ~175 violations (64 shorting_items, 61 solder_mask_bridge, 44 clearance, 8 unconnected, 3 tracks_crossing, 3 silk_over_copper). This is pre-existing autorouter quality noise from CapacityMeshSolver (`effort: 1`, stochastic) — the exact count varies run-to-run (earlier baseline: 253). It is NOT caused by the schema v1.2 / sheet-context migration, which only touches schematic elements.
+
+Earlier opamp-era baseline (pre-migration, from CONTEXT history): 0 errors, 0 unconnected, 3 silk_over_copper warnings on R3/R4/R5 (0402 passives packed in a row, center-placement fallback where the 0.8mm text box overlaps pad solder mask). These are warnings — the fab house clips silkscreen over pads.
 
 ---
 
 ## 9. Known Issues and Quirks
 
-1. **`nirToCircuitJson` name collision:** The async version (line 82) is shadowed by the sync version (line 870) in module scope. `nirToCircuitJsonAsync` is the reliable async entry point.
+1. **`nirToCircuitJson` name collision:** The async version (line 96) is shadowed by the sync version (line 1098) in module scope. `nirToCircuitJsonAsync` is the reliable async entry point.
 
 2. **v1.1 component values dropped by serializer:** `source_component_base` does not include `value`. The SPICE netlist generator must look up values from the original NIR.
 
@@ -704,6 +744,12 @@ The 3 remaining warnings are from R3, R4, R5 (0402 passives packed in a row). Bo
 
 9. **Wire snap updates `te.points` directly:** `applySnapTrace()` modifies `te.points[0]`/`te.points[last]` and `updateTracePath()` reads from `te.points` (not stale `traceOverrides`).
 
+10. **Unicode value strings not normalized yet:** Value strings like `"1µF"`, `"600R@100MHz"` pass through as-is. A `// TODO` near JSX resistance/inductance emission marks where ASCII normalization belongs. The schema fixture matches what v1.2 actually specifies.
+
+11. **`kicadSymbolToCircuitJson.ts` is not wired in:** The standalone KiCad-symbol→Circuit JSON emitter carries `schematic_sheet_id` but is unused — the live KiCad path is the inline branch in `emitSchematicComponent` (serializer.ts). When the standalone path is connected, its sheet-id output will make multi-sheet grouping work automatically.
+
+12. **Deferred schema v1.2 items:** `custom_symbols_required` / `hierarchical_sheets` root keys, plus `lookupSymbol`/`lookupKicadSymbol`/`makeSymbolGeometry` and `SEMANTIC_TO_PASSIVE`/`PIN_NAME_FIXUP`/`inferPinCount` rework — deferred until `custom_symbols_required` exists. `_NEW_*` fields are advisory pass-through only.
+
 ---
 
 ## 10. Fixture Catalog
@@ -717,6 +763,9 @@ The 3 remaining warnings are from R3, R4, R5 (0402 passives packed in a row). Bo
 | `rcLowpassNir` | v1.1 | R1, C1 | tran, op, dc | RC low-pass filter |
 | `rcLowpassAcNir` | v1.1 | R1, C1 | ac | RC low-pass (AC sweep) |
 | `rcLowpassFftNir` | v1.1 | R1, C1 | fft | RC low-pass (Fourier) |
+| `lm358_noninv_001` | v1.1 | LM358 + passives | — | Non-inverting op-amp |
+| `idk.nir.json` | v1.2 | ULP instrumentation amp | — | AutoZero InAmp w/ digital gain |
+| `new schema.nir.json` | v1.2 | ULP instrumentation amp (`ulp_` prefix) | — | AutoZero_InAmp_with_Digital_Gain_Control |
 
 ---
 
@@ -729,7 +778,7 @@ The 3 remaining warnings are from R3, R4, R5 (0402 passives packed in a row). Bo
 - `@tscircuit/capacity-autorouter` (v0.0.692) — PCB trace routing solver
 
 ### Optional
-- `@tscircuit/schematic-viewer` — Alternative SVG renderer (checked via `OPEN_FORGE_VIEWER` env)
+- `@tscircuit/schematic-viewer` — Alternative SVG renderer (checked via `KICAD_VIEWER` env)
 - `ngspice` (v46+) — SPICE simulator binary (checked via `NGSPICE_BIN` env or PATH)
 - `kicad-cli` (v10.0.4) — DRC validation
 
@@ -759,7 +808,7 @@ The 3 remaining warnings are from R3, R4, R5 (0402 passives packed in a row). Bo
 - Functions documented via JSDoc-style headers (file-level purpose, not per-function)
 
 ### Testing
-- 100 tests across 6 files
+- 103 tests across 6 files
 - Tests skip gracefully when ngspice is unavailable
 - DRC validation is manual (run `kicad-cli pcb drc`)
 - No CI/CD configured
@@ -778,15 +827,34 @@ e98d8bb  Update README
 44973c6  feat: add Layer 4 simulator module (ngspice batch driver + Python bridge) [Sanhita]
 4439f27  Merge pull request #2 from sanhita0804/feature/ngspice-simulator
 a033682  fix: guard circuitJsonToKicadPcb call behind pcb_board presence check
+afff17a  Updates of Schematic Viewer
+d3c3729  Merge branch 'main' of https://github.com/Sada2108/serializer
+b909091  make sim_server port configurable via PORT env var
+5bef906  add Dockerfile for sim_server deployment
+9c55157  bind sim_server to 0.0.0.0 for Railway networking
+fe1af18  Remove KiCad/PCB artifact files from repo tracking
+3936430  Remove PCB/DRC generated output files from tracking
+93fc4e5  Untrack pcbRouting.test.ts
+bb44041  Fix KiCad-style footprint dimension resolution + pad rotation
+339a27d  Wire OPEN_FORGE_USE_KICAD_SYMBOLS and OPEN_FORGE_USE_PARSED_FOOTPRINTS env flags into serializer.ts
 ```
 
-All work after `a033682` (uncommitted) is Sada's continuing work on top of Sanhita's simulator merge.
+All work after `339a27d` (uncommitted) is Sada's continuing work — including the schema v1.2 migration and sheet-context rollout.
 
 ---
 
 ## 14. Current State (Uncommitted Work)
 
-### Modified tracked files
+### Schema v1.2 migration (latest work)
+- `serializer/serializer.ts` — `schema_version` guards accept `"1.1" | "1.2"`; `DEFAULT_SCHEMATIC_SHEET_ID`; sheet-id threading through `emitSchematicComponent` / `makeSymbolGeometry` / `schematicLine` / `schematicPath` / `schematicBox` / `emitPowerSymbol`; Unicode-value TODO at resistance JSX emission.
+- `serializer/kicadSymbolToCircuitJson.ts` — sheet-id stamping on all schematic elements (standalone path, not yet wired in).
+- `simulator/netlistFromCircuitJson.ts` — `detectNirVersion` treats `schema_version "1.2"` as `"v1.1"`.
+- `serializer/fixtures/index.ts` — `schema_version: "1.1" | "1.2"` union, open root, optional `_NEW_*` fields, loosened `NirV11PerformanceSpecs`.
+- `serializer/fixtures/new schema.nir.json` — v1.2 sample; GND net `net_type` fixed `power` → `ground` so `emitPowerSymbol` renders a ground triangle.
+- `serializer/fixtures/rc_lowpass_001.nir.json` — added `thickness_mm: 1.6` to `board_spec` (pre-existing strict-sync-path gap; async path unaffected).
+- **Deferred:** `custom_symbols_required` / `hierarchical_sheets` root keys, `lookupSymbol`/`lookupKicadSymbol`/`makeSymbolGeometry`, `SEMANTIC_TO_PASSIVE`/`PIN_NAME_FIXUP`/`inferPinCount`, Unicode value normalization.
+
+### Earlier uncommitted work (still present)
 - `serializer/serializer.ts` — KiCad output pipeline, exported internals
 - `serializer/fixtures/index.ts` — 4 new fixtures, `ac_magnitude` field
 - `simulator/netlistFromCircuitJson.ts` — Analysis type support (tran/op/dc/ac/fft), v1.1 value lookup
@@ -795,9 +863,9 @@ All work after `a033682` (uncommitted) is Sada's continuing work on top of Sanhi
 - `package.json` — Dependencies
 
 ### New untracked files (2430+ lines)
-- `serializer/kicadPcbWriter.ts` (535 lines) — KiCad 10 format writer
-- `serializer/pcbRouting.ts` (475 lines) — Routing utilities
-- `serializer/router.ts` (173 lines) — Manhattan autorouter wrapper
+- `serializer/kicadPcbWriter.ts` (640 lines) — KiCad 10 format writer
+- `serializer/pcbRouting.ts` (651 lines) — Routing utilities
+- `serializer/router.ts` (268 lines) — Manhattan autorouter wrapper
 - `dev-tools/render_interactive_simulator.ts` (418 lines) — Interactive viewer generator
 - `dev-tools/render_interactive_schematic.ts` (~120 lines) — Schematic editor generator
 - `dev-tools/interactive_schematic.html` (~580 lines) — Schematic editor HTML template
@@ -806,13 +874,14 @@ All work after `a033682` (uncommitted) is Sada's continuing work on top of Sanhi
 - `simulator/formatNumbers.ts` (132 lines) — SI prefix formatting
 - `simulator/parseFourierOutput.ts` (83 lines) — Fourier log parser
 - `simulator/printSimulationResult.ts` (60 lines) — Console printer
+- `serializer/kicadSymbolLibrary.ts`, `serializer/kicadSymbolParser.ts`, `serializer/kicadSymbolToCircuitJson.ts` — KiCad symbol path
 - 4 new NIR fixture JSON files
 - 5 test files (927 lines total)
 - 13 generated HTML viewer pages
 - 5 generated schematic editor HTML pages
 
 ### Test status
-**100 pass, 0 fail** across 6 test files (3763 expect() calls).
+**103 pass, 0 fail** across 6 test files (4310 expect() calls).
 
 ### DRC status
-**0 errors, 0 unconnected, 3 silk_over_copper warnings** (R3, R4, R5 center-placement fallback).
+**rc_lowpass:** 0 violations, 0 unconnected — clean. **opamp:** ~175 autorouter-quality violations (stochastic, 253 earlier baseline) — pre-existing, not migration-related.

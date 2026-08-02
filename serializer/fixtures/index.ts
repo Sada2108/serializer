@@ -1,4 +1,4 @@
-// Open_Forge — NIR fixture loader (Layer 3).
+// Serializer — NIR fixture loader (Layer 3).
 //
 // Typed loaders for the two NIR schema versions consumed by tests:
 //   - Libbrecht-Hall fixture (legacy v0.1 schema)
@@ -51,10 +51,17 @@ export interface Nir {
 export const libbrechtHallNir: Nir = libbrechtHallNirRaw as unknown as Nir
 
 // --------------------------------------------------------------------------- //
-// v1.1 (instrumentation-amp) — new top-level schema
+// v1.1/v1.2 (instrumentation) — new top-level schema
 // --------------------------------------------------------------------------- //
 
+// Shared component/net/board shapes. v1.2 (schema_version "1.2") is additive
+// over v1.1: new `_NEW_*` sections and per-entity fields are all optional so
+// both versions dispatch through the same parse path. Unknown top-level keys
+// are tolerated so future pass-through fields (e.g. `custom_symbols_required`,
+// `hierarchical_sheets`) can land without type churn.
+
 export interface NirV11Component {
+  [key: string]: unknown
   ref: string
   component_id: string
   component_type: string
@@ -73,6 +80,12 @@ export interface NirV11Component {
   position_confidence?: number
   position_source?: string
   confidence_by_layer?: Record<string, number | null>
+  _NEW_courtyard_mm?: {
+    x: number
+    y: number
+    note?: string
+  }
+  _NEW_thermal_relief_required?: boolean
 }
 
 export interface NirV11Connection {
@@ -87,6 +100,12 @@ export interface NirV11NetlistEntry {
   connections: NirV11Connection[]
   source_rule?: string
   net_confidence?: number
+  _NEW_controlled_impedance?: {
+    type: string
+    target_ohms: number | null
+    note?: string
+  } | null
+  _NEW_routing_priority_tier?: number
 }
 
 export interface NirV11PlacementConstraint {
@@ -109,20 +128,25 @@ export interface NirV11BoardSpec {
   min_clearance_mm?: number
   min_via_drill_mm?: number
   surface_finish?: string
+  _NEW_stackup_arrangement?: string
+  _NEW_prepreg_core_note?: string
+  _NEW_annular_ring_min_mm?: number
 }
 
 export interface NirV11PerformanceSpecs {
-  [name: string]: {
-    unit: string
-    value: number
+  // v1.2 spec entries have heterogeneous shapes (value / at_1kHz / min+max /
+  // at_230uA_total), so each entry is loosely typed rather than pinned to
+  // { unit; value }.
+  [name: string]: Record<string, unknown> & {
+    unit?: string
   }
 }
 
 export interface NirV11 {
-  schema_version: "1.1"
+  schema_version: "1.1" | "1.2"
   design_id: string
   prompt?: string
-  design_methodology?: string
+  design_methodology?: string | Record<string, unknown>
   created_at?: string
   pipeline_version?: string
   topology?: string
@@ -132,6 +156,7 @@ export interface NirV11 {
   board_spec: NirV11BoardSpec
   performance_specs?: NirV11PerformanceSpecs
   bom?: unknown[]
+  [key: string]: unknown
 }
 
 export const instrumentationAmpNir: NirV11 =

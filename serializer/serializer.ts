@@ -1,4 +1,4 @@
-// Open_Forge — Team E serializer (Layer 3).
+// Serializer — Team E serializer (Layer 3).
 //
 // New export path: NIR -> Circuit JSON (typed via circuit-json) -> SVG render.
 //
@@ -43,7 +43,7 @@ import type {
   NirV11,
 } from "./fixtures"
 import { circuitJsonToKicadPcb } from "./kicadPcbWriter"
-import { snapCircuitJsonTracesToManhattan, enforceTracePadClearance } from "./pcbRouting"
+import { chamferCircuitJsonTracesTo45Degree, enforceTracePadClearance } from "./pcbRouting"
 import { lookupSymbol, getGroundSymbolName, logMissingSymbol } from "./symbolLibrary"
 import { lookupKicadSymbol, hasKicadSymbol, setUseKicadSymbols } from "./kicadSymbolLibrary"
 import { getParsedFootprintSize, setUseParsedFootprints } from "./kicadFootprintLoader"
@@ -52,10 +52,10 @@ import { getParsedFootprintSize, setUseParsedFootprints } from "./kicadFootprint
 // Env-flag wiring — gate KiCad library paths behind env vars
 // --------------------------------------------------------------------------- //
 
-if (process.env.OPEN_FORGE_USE_KICAD_SYMBOLS) {
+if (process.env.KICAD_USE_SYMBOLS) {
   setUseKicadSymbols(true)
 }
-if (process.env.OPEN_FORGE_USE_PARSED_FOOTPRINTS) {
+if (process.env.KICAD_USE_PARSED_FOOTPRINTS) {
   setUseParsedFootprints(true)
 }
 
@@ -188,8 +188,8 @@ function normalizeComponentFields(
 async function parseNirV11WithTscircuit(nir: NirV11): Promise<AnyCircuitElement[]> {
   // 1. Validate required top-level fields
   requireKeys(nir, ["schema_version", "design_id", "components", "netlist", "board_spec"], "NIR v1.1 root")
-  if (nir.schema_version !== "1.1") {
-    throw new Error(`NIR v1.1 parser expects schema_version "1.1", got "${nir.schema_version}"`)
+  if (nir.schema_version !== "1.1" && nir.schema_version !== "1.2") {
+    throw new Error(`NIR v1.1/v1.2 parser expects schema_version "1.1" or "1.2", got "${nir.schema_version}"`)
   }
 
   const comps = nir.components
@@ -212,8 +212,8 @@ async function parseNirV11WithTscircuit(nir: NirV11): Promise<AnyCircuitElement[
 // Synchronous fallback for v1.1 (used when @tscircuit/eval unavailable or for sync API)
 function parseNirV11Sync(nir: NirV11): AnyCircuitElement[] {
   requireKeys(nir, ["schema_version", "design_id", "components", "netlist", "board_spec"], "NIR v1.1 root")
-  if (nir.schema_version !== "1.1") {
-    throw new Error(`NIR v1.1 parser expects schema_version "1.1", got "${nir.schema_version}"`)
+  if (nir.schema_version !== "1.1" && nir.schema_version !== "1.2") {
+    throw new Error(`NIR v1.1/v1.2 parser expects schema_version "1.1" or "1.2", got "${nir.schema_version}"`)
   }
   if (nir.components.length === 0) {
     throw new Error("NIR v1.1 `components` array is empty — refusing to emit empty Circuit JSON.")
@@ -224,6 +224,47 @@ function parseNirV11Sync(nir: NirV11): AnyCircuitElement[] {
 // --------------------------------------------------------------------------- //
 // NIR v1.1 -> tscircuit JSX generation
 // --------------------------------------------------------------------------- //
+
+// tscircuit's `net.<name>` JSX prop reserves `.`, `+`, `-`, and leading digits
+// for its own parsing (createNetsFromProps in @tscircuit/core):
+//   - /net\.[^\s>]*\./   -> period rejected
+//   - /net\.[^\s>]*[+-]/ -> "+" or "-" rejected
+//   - /net\.[0-9]/       -> leading digit rejected
+// Parens are NOT rejected. Real-world KiCad auto-names like "Net-(C324-Pad1)"
+// therefore break JSX generation, so we sanitize the name ONLY for the JSX
+// prop. The original NIR net name is restored onto the emitted source_net
+// elements after CircuitRunner returns (see restoreOriginalNetNames) so that
+// net identity in Circuit JSON / netlist / DRC stays the source-of-truth name.
+export function sanitizeNetNameForJsx(netName: string): string {
+  let s = netName.replace(/[.+\-]/g, "_")
+  if (/^[0-9]/.test(s)) s = `_${s}`
+  return s
+}
+
+// After tscircuit runs, source_net.name holds the sanitized JSX prop string
+// (tscircuit derives it from `new Net({ name: prop.split("net.")[1] })`).
+// Restore the original NIR net_name so downstream consumers (netlist export,
+// DRC net matching, test points) keep resolving against the source of truth.
+// Trace connectivity is id-based (connected_source_net_ids), never name-based,
+// so this rename is safe for routing and KiCad net sections.
+function restoreOriginalNetNames(
+  circuitJson: AnyCircuitElement[],
+  netlist: NirV11NetlistEntry[],
+): AnyCircuitElement[] {
+  const sanitizedToOriginal = new Map<string, string>()
+  for (const net of netlist) {
+    const s = sanitizeNetNameForJsx(net.net_name)
+    if (s !== net.net_name) sanitizedToOriginal.set(s, net.net_name)
+  }
+  if (sanitizedToOriginal.size === 0) return circuitJson
+  for (const el of circuitJson) {
+    if (el.type === "source_net" && typeof (el as any).name === "string") {
+      const original = sanitizedToOriginal.get((el as any).name)
+      if (original) (el as any).name = original
+    }
+  }
+  return circuitJson
+}
 
 // Footprint mapping: fixture names -> KiCad footprint strings from tscircuit (with kicad: prefix)
 export const FOOTPRINT_MAP: Record<string, string> = {
@@ -299,7 +340,7 @@ export function generateTscircuitJsx(nir: NirV11): string {
         : isPassive
           ? conn.pin_name
           : fixPinName(conn.pin_name)
-      traceLines.push(`    <trace from="${conn.ref}.${pin}" to="net.${net.net_name}" />`)
+      traceLines.push(`    <trace from="${conn.ref}.${pin}" to="net.${sanitizeNetNameForJsx(net.net_name)}" />`)
     }
   }
 
@@ -362,6 +403,9 @@ function generateComponentJsx(comp: NirV11Component, netlist: NirV11NetlistEntry
   ]
 
   // Value prop depends on component type
+  // TODO: values may arrive as Unicode/unit strings ("1µF", "600R@100MHz") per
+  // schema v1.2. The async tscircuit path may reject or mis-parse these; if that
+  // path gets exercised for v1.2 fixtures, normalize to ASCII ("1u" style) here.
   if (elementType === "resistor" && comp.value != null) props.push(`resistance="${comp.value}"`)
   else if (elementType === "capacitor" && comp.value != null) props.push(`capacitance="${comp.value}"`)
   else if (elementType === "inductor" && comp.value != null) props.push(`inductance="${comp.value}"`)
@@ -467,7 +511,7 @@ function generateCircuitJsonFromNir(nir: NirV11): AnyCircuitElement[] {
       : naivePosition(comp.ref, i)
 
     out.push(emitPcbComponent(comp, pos.x, pos.y, pos.rot))
-    out.push(...emitSchematicComponent(comp, pos.x, pos.y))
+    out.push(...emitSchematicComponent(comp, pos.x, pos.y, DEFAULT_SCHEMATIC_SHEET_ID))
   }
 
   // 3. Nets + traces from netlist
@@ -487,7 +531,7 @@ function generateCircuitJsonFromNir(nir: NirV11): AnyCircuitElement[] {
           sy = comp.position.y_mm + (net.net_type === "ground" ? 4 : -3)
         }
       }
-      out.push(...emitPowerSymbol(net, sx, sy))
+      out.push(...emitPowerSymbol(net, sx, sy, DEFAULT_SCHEMATIC_SHEET_ID))
     }
   }
 
@@ -607,10 +651,18 @@ const SYMBOL_TEXT_REF_FONT = 1.2
 const SYMBOL_TEXT_VAL_FONT = 1.0
 const SYMBOL_TEXT_OFFSET = 1.8
 
+// Single default schematic sheet. Every schematic element emitted by the sync
+// path is tagged with this id so multi-sheet support (hierarchical_sheets)
+// can be added later by grouping on schematic_sheet_id without retrofitting
+// each emit call site. A `schematic_sheet` element is NOT emitted today so the
+// rendered single-sheet output stays byte-identical.
+const DEFAULT_SCHEMATIC_SHEET_ID = "schematic_sheet_default"
+
 function emitSchematicComponent(
   comp: NirV11Component,
   x: number,
   y: number,
+  schematicSheetId: string = DEFAULT_SCHEMATIC_SHEET_ID,
 ): AnyCircuitElement[] {
   const refSchId = `${comp.ref}_sch`
   const pinCount = inferPinCount(comp.footprint)
@@ -635,6 +687,7 @@ function emitSchematicComponent(
       size: { width: bodyW, height: bodyH },
       is_box_with_pins: false,
       symbol_display_value: typeof comp.value === "string" ? comp.value : undefined,
+      schematic_sheet_id: schematicSheetId,
     } as AnyCircuitElement)
 
     for (const prim of kicadSym.primitives) {
@@ -647,6 +700,7 @@ function emitSchematicComponent(
           width: prim.end.x - prim.start.x,
           height: prim.end.y - prim.start.y,
           is_dashed: false,
+          schematic_sheet_id: schematicSheetId,
         } as AnyCircuitElement)
       } else if (prim.type === "polyline" && prim.points && prim.points.length > 1) {
         const absPoints = prim.points.map(p => ({ x: x + p.x, y: y + p.y }))
@@ -657,6 +711,7 @@ function emitSchematicComponent(
           points: absPoints,
           is_filled: !!prim.filled,
           fill_color: prim.filled ? "#0c1e2e" : undefined,
+          schematic_sheet_id: schematicSheetId,
         } as AnyCircuitElement)
       } else if (prim.type === "pin" && prim.pin) {
         const px = x + prim.pin.x
@@ -672,6 +727,7 @@ function emitSchematicComponent(
           x1: ex, y1: ey, x2: px, y2: py,
           color: "#0c1e2e",
           is_dashed: false,
+          schematic_sheet_id: schematicSheetId,
         } as AnyCircuitElement)
 
         const portIdx = kicadSym.ports.findIndex(p => p.number === prim.pin!.number)
@@ -684,6 +740,7 @@ function emitSchematicComponent(
             center: { x: px, y: py },
             facing_angle: prim.pin.angle,
             display_pin_label: prim.pin.name || prim.pin.number,
+            schematic_sheet_id: schematicSheetId,
           } as AnyCircuitElement)
         }
       }
@@ -699,6 +756,7 @@ function emitSchematicComponent(
       rotation: 0,
       anchor: "center",
       color: "#000",
+      schematic_sheet_id: schematicSheetId,
     } as AnyCircuitElement)
 
     if (typeof comp.value === "string" && comp.value.length > 0) {
@@ -711,6 +769,7 @@ function emitSchematicComponent(
         rotation: 0,
         anchor: "center",
         color: "#333",
+        schematic_sheet_id: schematicSheetId,
       } as AnyCircuitElement)
     }
 
@@ -732,10 +791,11 @@ function emitSchematicComponent(
     is_box_with_pins: sym ? true : !["resistor", "capacitor", "diode", "tvs_diode_array"].includes(comp.component_type),
     symbol_name: sym?.symbolName,
     symbol_display_value: typeof comp.value === "string" ? comp.value : undefined,
+    schematic_sheet_id: schematicSheetId,
   } as AnyCircuitElement)
 
   if (!sym) {
-    elements.push(...makeSymbolGeometry(comp, refSchId, x, y, bodySize, pinCount))
+    elements.push(...makeSymbolGeometry(comp, refSchId, x, y, bodySize, pinCount, schematicSheetId))
   }
 
   const bodyH = bodySize.height
@@ -748,6 +808,7 @@ function emitSchematicComponent(
     rotation: 0,
     anchor: "center",
     color: "#000",
+    schematic_sheet_id: schematicSheetId,
   } as AnyCircuitElement)
 
   if (typeof comp.value === "string" && comp.value.length > 0) {
@@ -760,6 +821,7 @@ function emitSchematicComponent(
       rotation: 0,
       anchor: "center",
       color: "#333",
+      schematic_sheet_id: schematicSheetId,
     } as AnyCircuitElement)
   }
 
@@ -773,6 +835,7 @@ function makeSymbolGeometry(
   cy: number,
   bodySize: { width: number; height: number },
   pinCount: number,
+  schematicSheetId: string = DEFAULT_SCHEMATIC_SHEET_ID,
 ): AnyCircuitElement[] {
   const ct = comp.component_type
   const wire = "#0c1e2e"
@@ -795,9 +858,9 @@ function makeSymbolGeometry(
       { x: cx + w2, y: cy },
     ]
     return [
-      schematicLine(sid, cx - w2 - 2, cy, x0, cy, wire),
-      schematicLine(sid, cx + w2, cy, cx + w2 + 2, cy, wire),
-      schematicPath(sid, pts),
+      schematicLine(sid, cx - w2 - 2, cy, x0, cy, wire, schematicSheetId),
+      schematicLine(sid, cx + w2, cy, cx + w2 + 2, cy, wire, schematicSheetId),
+      schematicPath(sid, pts, false, schematicSheetId),
     ]
   }
   if (ct === "capacitor") {
@@ -805,54 +868,54 @@ function makeSymbolGeometry(
     const xR = cx + 0.8
     const plateH = bodySize.height * 1.2
     return [
-      schematicLine(sid, cx - SYMBOL_DISCRETE_W / 2 - 2, cy, xL, cy, wire),
-      schematicLine(sid, cx - SYMBOL_DISCRETE_W / 2, cy, xL, cy, wire),
-      schematicLine(sid, xL, cy - plateH / 2, xL, cy + plateH / 2, wire),
-      schematicLine(sid, xR, cy - plateH / 2, xR, cy + plateH / 2, wire),
-      schematicLine(sid, xR, cy, cx + SYMBOL_DISCRETE_W / 2 + 2, cy, wire),
+      schematicLine(sid, cx - SYMBOL_DISCRETE_W / 2 - 2, cy, xL, cy, wire, schematicSheetId),
+      schematicLine(sid, cx - SYMBOL_DISCRETE_W / 2, cy, xL, cy, wire, schematicSheetId),
+      schematicLine(sid, xL, cy - plateH / 2, xL, cy + plateH / 2, wire, schematicSheetId),
+      schematicLine(sid, xR, cy - plateH / 2, xR, cy + plateH / 2, wire, schematicSheetId),
+      schematicLine(sid, xR, cy, cx + SYMBOL_DISCRETE_W / 2 + 2, cy, wire, schematicSheetId),
     ]
   }
   if (ct === "tvs_diode_array" || ct === "diode") {
     const tri = 1.6
     const tip = cx + tri
     return [
-      schematicLine(sid, cx - SYMBOL_DISCRETE_W / 2 - 2, cy, cx - tri, cy, wire),
-      schematicPath(sid, [{ x: cx - tri, y: cy - 1 }, { x: cx - tri, y: cy + 1 }, { x: tip, y: cy }], true),
-      schematicLine(sid, tip, cy - 1, tip, cy + 1, wire),
-      schematicLine(sid, tip, cy, cx + SYMBOL_DISCRETE_W / 2 + 2, cy, wire),
+      schematicLine(sid, cx - SYMBOL_DISCRETE_W / 2 - 2, cy, cx - tri, cy, wire, schematicSheetId),
+      schematicPath(sid, [{ x: cx - tri, y: cy - 1 }, { x: cx - tri, y: cy + 1 }, { x: tip, y: cy }], true, schematicSheetId),
+      schematicLine(sid, tip, cy - 1, tip, cy + 1, wire, schematicSheetId),
+      schematicLine(sid, tip, cy, cx + SYMBOL_DISCRETE_W / 2 + 2, cy, wire, schematicSheetId),
     ]
   }
   if (ct === "ferrite_bead") {
     const w = SYMBOL_DISCRETE_W
     const h = SYMBOL_DISCRETE_H
     return [
-      schematicBox(sid, cx - w / 2, cy - h / 2, w, h),
-      schematicLine(sid, cx - w / 2 - 2, cy, cx - w / 2, cy, wire),
-      schematicLine(sid, cx + w / 2, cy, cx + w / 2 + 2, cy, wire),
-      schematicPath(sid, [{ x: cx - 1.5, y: cy }, { x: cx - 0.5, y: cy - 0.5 }, { x: cx + 0.5, y: cy + 0.5 }, { x: cx + 1.5, y: cy }]),
+      schematicBox(sid, cx - w / 2, cy - h / 2, w, h, false, schematicSheetId),
+      schematicLine(sid, cx - w / 2 - 2, cy, cx - w / 2, cy, wire, schematicSheetId),
+      schematicLine(sid, cx + w / 2, cy, cx + w / 2 + 2, cy, wire, schematicSheetId),
+      schematicPath(sid, [{ x: cx - 1.5, y: cy }, { x: cx - 0.5, y: cy - 0.5 }, { x: cx + 0.5, y: cy + 0.5 }, { x: cx + 1.5, y: cy }], false, schematicSheetId),
     ]
   }
   // IC box with pin stubs
   const w = SYMBOL_IC_W
   const h = bodySize.height
   const out: AnyCircuitElement[] = []
-  out.push(schematicBox(sid, cx - w / 2, cy - h / 2, w, h))
+  out.push(schematicBox(sid, cx - w / 2, cy - h / 2, w, h, false, schematicSheetId))
   const pins = pinCount
   const half = Math.ceil(pins / 2)
   for (let i = 0; i < half; i++) {
     const y = cy - h / 2 + 0.5 + i * (h / Math.max(half, 1)) * 0.8
-    out.push(schematicLine(sid, cx - w / 2 - 1.5, y, cx - w / 2, y, wire))
+    out.push(schematicLine(sid, cx - w / 2 - 1.5, y, cx - w / 2, y, wire, schematicSheetId))
   }
   const rightCount = pins - half
   for (let i = 0; i < rightCount; i++) {
     const y = cy - h / 2 + 0.5 + i * (h / Math.max(rightCount, 1)) * 0.8
-    out.push(schematicLine(sid, cx + w / 2, y, cx + w / 2 + 1.5, y, wire))
+    out.push(schematicLine(sid, cx + w / 2, y, cx + w / 2 + 1.5, y, wire, schematicSheetId))
   }
   if (comp.component_type === "digital_potentiometer") {
-    out.push({ type: "schematic_text", schematic_text_id: `${sid}_lbl`, schematic_component_id: sid, text: "RH/W", font_size: 1.0, position: { x: cx, y: cy }, rotation: 0, anchor: "center", color: "#444" } as AnyCircuitElement)
+    out.push({ type: "schematic_text", schematic_text_id: `${sid}_lbl`, schematic_component_id: sid, text: "RH/W", font_size: 1.0, position: { x: cx, y: cy }, rotation: 0, anchor: "center", color: "#444", schematic_sheet_id: schematicSheetId } as AnyCircuitElement)
   }
   if (comp.component_type === "instrumentation_amp") {
-    out.push({ type: "schematic_text", schematic_text_id: `${sid}_ia`, schematic_component_id: sid, text: "IA", font_size: 1.0, position: { x: cx, y: cy }, rotation: 0, anchor: "center", color: "#444" } as AnyCircuitElement)
+    out.push({ type: "schematic_text", schematic_text_id: `${sid}_ia`, schematic_component_id: sid, text: "IA", font_size: 1.0, position: { x: cx, y: cy }, rotation: 0, anchor: "center", color: "#444", schematic_sheet_id: schematicSheetId } as AnyCircuitElement)
   }
   return out
 }
@@ -861,6 +924,7 @@ function schematicLine(
   sid: string,
   x1: number, y1: number, x2: number, y2: number,
   color: string,
+  schematicSheetId: string = DEFAULT_SCHEMATIC_SHEET_ID,
 ): AnyCircuitElement {
   return {
     type: "schematic_line",
@@ -869,6 +933,7 @@ function schematicLine(
     x1, y1, x2, y2,
     color,
     is_dashed: false,
+    schematic_sheet_id: schematicSheetId,
   } as AnyCircuitElement
 }
 
@@ -876,6 +941,7 @@ function schematicPath(
   sid: string,
   points: { x: number; y: number }[],
   filled = false,
+  schematicSheetId: string = DEFAULT_SCHEMATIC_SHEET_ID,
 ): AnyCircuitElement {
   return {
     type: "schematic_path",
@@ -884,6 +950,7 @@ function schematicPath(
     points,
     is_filled: filled,
     fill_color: filled ? "#0c1e2e" : undefined,
+    schematic_sheet_id: schematicSheetId,
   } as AnyCircuitElement
 }
 
@@ -891,12 +958,14 @@ function schematicBox(
   sid: string,
   x: number, y: number, w: number, h: number,
   dashed = false,
+  schematicSheetId: string = DEFAULT_SCHEMATIC_SHEET_ID,
 ): AnyCircuitElement {
   return {
     type: "schematic_box",
     schematic_component_id: sid,
     x, y, width: w, height: h,
     is_dashed: dashed,
+    schematic_sheet_id: schematicSheetId,
   } as AnyCircuitElement
 }
 
@@ -916,6 +985,7 @@ function emitPowerSymbol(
   net: NirV11NetlistEntry,
   x: number,
   y: number,
+  schematicSheetId: string = DEFAULT_SCHEMATIC_SHEET_ID,
 ): AnyCircuitElement[] {
   const elements: AnyCircuitElement[] = []
   const schId = `net_${net.net_name}_sch`
@@ -931,6 +1001,7 @@ function emitPowerSymbol(
       size: { width: 2, height: 2 },
       is_box_with_pins: true,
       symbol_name: getGroundSymbolName(),
+      schematic_sheet_id: schematicSheetId,
     } as AnyCircuitElement)
   } else if (net.net_type === "power") {
     // Power nets (VIN, VCC, etc.): plain text label only, no graphic shape
@@ -943,6 +1014,7 @@ function emitPowerSymbol(
       rotation: 0,
       anchor: "center",
       color: "#c00",
+      schematic_sheet_id: schematicSheetId,
     } as AnyCircuitElement)
   }
 
@@ -1025,7 +1097,7 @@ export function detectNirSchemaVersion(nir: unknown): NirSchemaVersion {
 export function renderCircuitJson(
   circuitJson: AnyCircuitElement[],
 ): { svg: string; viewerUsed: ViewerUsed } {
-  const want = (process.env.OPEN_FORGE_VIEWER ?? "").toLowerCase()
+  const want = (process.env.KICAD_VIEWER ?? "").toLowerCase()
 
   if (want === "schematic-viewer") {
     try {
@@ -1096,10 +1168,10 @@ export async function serializeNirAsync(nir: Nir | unknown): Promise<SerializerO
   const circuitJson = await nirToCircuitJsonAsync(nir)
   const { svg, viewerUsed } = renderCircuitJson(circuitJson)
   const hasPcbBoard = circuitJson.some((e: any) => e.type === "pcb_board")
-  const snapped = hasPcbBoard ? snapCircuitJsonTracesToManhattan(circuitJson) : circuitJson
-  const cleared = hasPcbBoard ? enforceTracePadClearance(snapped) : snapped
-  const kicadPcb = hasPcbBoard ? circuitJsonToKicadPcb(cleared) : undefined
-  return { circuitJson: cleared, svg, viewerUsed, kicadPcb }
+  const cleared = hasPcbBoard ? enforceTracePadClearance(circuitJson) : circuitJson
+  const chamfered = hasPcbBoard ? chamferCircuitJsonTracesTo45Degree(cleared) : cleared
+  const kicadPcb = hasPcbBoard ? circuitJsonToKicadPcb(chamfered) : undefined
+  return { circuitJson: chamfered, svg, viewerUsed, kicadPcb }
 }
 
 export { serializeNir as serializeNirSync }

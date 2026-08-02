@@ -1,4 +1,4 @@
-# Open_Forge Layer 3 — Architecture Flowchart
+# Serializer Layer 3 — Architecture Flowchart
 
 ## Overview
 
@@ -410,7 +410,7 @@ The `generateTscircuitJsx()` function transforms NIR data:
 │  │  SPICE Netlist (string)                                  │   │
 │  │                                                          │   │
 │  │  Format:                                                 │   │
-│  │    * Open_Forge generated netlist                        │   │
+│  │    * Serializer generated netlist                        │   │
 │  │    R1 0 4 1k                                             │   │
 │  │    C1 1 2 1uF                                            │   │
 │  │    V1 1 0 DC 0  (implicit, warning attached)            │   │
@@ -545,13 +545,13 @@ The `generateTscircuitJsx()` function transforms NIR data:
 
 | File | Purpose | Source/Origin |
 |------|---------|---------------|
-| `serializer/serializer.ts` | Main entry: NIR → Circuit JSON + SVG | Custom (Open_Forge) |
+| `serializer/serializer.ts` | Main entry: NIR → Circuit JSON + SVG | Custom (Serializer) |
 | `serializer/router.ts` | Autorouting wrapper | Wraps @tscircuit/capacity-autorouter |
-| `serializer/pcbRouting.ts` | Circuit JSON → route conversion | Custom (Open_Forge) |
-| `serializer/kicadPcbWriter.ts` | Circuit JSON → KiCad PCB format | Custom (Open_Forge) |
-| `simulator/netlistFromCircuitJson.ts` | Circuit JSON → SPICE netlist | Custom (Open_Forge) |
-| `simulator/simulator.ts` | ngspice subprocess driver | Custom (Open_Forge) |
-| `simulator/parseRawFile.ts` | ngspice .raw output parser | Custom (Open_Forge) |
+| `serializer/pcbRouting.ts` | Circuit JSON → route conversion | Custom (Serializer) |
+| `serializer/kicadPcbWriter.ts` | Circuit JSON → KiCad PCB format | Custom (Serializer) |
+| `simulator/netlistFromCircuitJson.ts` | Circuit JSON → SPICE netlist | Custom (Serializer) |
+| `simulator/simulator.ts` | ngspice subprocess driver | Custom (Serializer) |
+| `simulator/parseRawFile.ts` | ngspice .raw output parser | Custom (Serializer) |
 | `serializer/fixtures/` | NIR input files | Libbrecht-Hall (v0.1), Custom (v1.1) |
 
 ---

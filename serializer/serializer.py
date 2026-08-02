@@ -1,4 +1,4 @@
-"""Open_Forge — Team E serializer, Python wrapper (Layer 3).
+"""Serializer — Team E serializer, Python wrapper (Layer 3).
 
 Thin Python wrapper around `open_forge/serializer.ts`.  Drives the new
 export path (NIR -> Circuit JSON -> SVG) by shelling out to the TypeScript
@@ -18,7 +18,7 @@ project root) is untouched and remains the fallback.
 
 Environment:
     NODE_BIN              path to `node` binary (default: `node`).
-    OPEN_FORGE_VIEWER     forwarded to the TS serializer
+    KICAD_VIEWER     forwarded to the TS serializer
                           (`schematic-viewer` | `circuit-to-svg`).
 """
 

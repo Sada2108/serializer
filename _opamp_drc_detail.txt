@@ -1,0 +1,519 @@
+** Drc report for _opamp_test.kicad_pcb **
+** Created on 2026-07-28T17:08:46 **
+** Report includes: Errors, Warnings **
+
+** Found 112 DRC violations **
+[shorting_items]: Items shorting two nets (nets VREF and GND)
+    Local override; error
+    @(87.7625 mm, 164.3250 mm): Pad 1 [VREF] of R5 on F.Cu
+    @(87.6250 mm, 164.3250 mm): Track [GND] on F.Cu, length 0.8000 mm
+[tracks_crossing]: Tracks crossing
+    Local override; error
+    @(91.7087 mm, 170.1660 mm): Track [GND] on F.Cu, length 3.9581 mm
+    @(90.3625 mm, 171.9000 mm): Track [VREF] on F.Cu, length 1.4516 mm
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and GND)
+    Local override; error
+    @(97.7625 mm, 157.6750 mm): Pad 2 [FEEDBACK_NODE] of R1 on F.Cu
+    @(96.8875 mm, 157.9925 mm): Track [GND] on F.Cu, length 0.8750 mm
+[shorting_items]: Items shorting two nets (nets GND and VREF)
+    Local override; error
+    @(91.8875 mm, 174.3250 mm): Track [GND] on F.Cu, length 0.8750 mm
+    @(92.7625 mm, 174.3250 mm): Pad 1 [VREF] of C4 on F.Cu
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and GND)
+    Local override; error
+    @(97.7625 mm, 157.6750 mm): Pad 2 [FEEDBACK_NODE] of R1 on F.Cu
+    @(97.7625 mm, 157.9925 mm): Track [GND] on F.Cu, length 0.3175 mm
+[shorting_items]: Items shorting two nets (nets GND and FEEDBACK_NODE)
+    Local override; error
+    @(105.5625 mm, 144.3000 mm): Track [GND] on F.Cu, length 6.7405 mm
+    @(108.7971 mm, 144.1791 mm): Track [FEEDBACK_NODE] on F.Cu, length 9.7301 mm
+[shorting_items]: Items shorting two nets (nets VREF and GND)
+    Local override; error
+    @(87.7625 mm, 164.3250 mm): Pad 1 [VREF] of R5 on F.Cu
+    @(87.7625 mm, 164.3250 mm): Track [GND] on F.Cu, length 8.9458 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.0732 mm)
+    Local override; error
+    @(98.8220 mm, 144.3000 mm): Track [GND] on F.Cu, length 3.6378 mm
+    @(108.7971 mm, 144.1791 mm): Track [FEEDBACK_NODE] on F.Cu, length 9.7301 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.0450 mm)
+    Local override; error
+    @(99.0670 mm, 144.1791 mm): Track [FEEDBACK_NODE] on F.Cu, length 14.7164 mm
+    @(98.8220 mm, 147.9378 mm): Track [GND] on F.Cu, length 0.1256 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.0750 mm)
+    Local override; error
+    @(105.5625 mm, 144.3000 mm): Via [GND] on F.Cu - B.Cu
+    @(108.2594 mm, 144.7750 mm): Track [FEEDBACK_NODE] on F.Cu, length 5.7049 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1706 mm)
+    Local override; error
+    @(99.0670 mm, 144.1791 mm): Track [FEEDBACK_NODE] on F.Cu, length 14.7164 mm
+    @(98.6964 mm, 157.5941 mm): Track [GND] on F.Cu, length 0.3089 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1706 mm)
+    Local override; error
+    @(99.0670 mm, 144.1791 mm): Track [FEEDBACK_NODE] on F.Cu, length 14.7164 mm
+    @(98.6964 mm, 148.0634 mm): Track [GND] on F.Cu, length 9.5307 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1706 mm)
+    Local override; error
+    @(99.0670 mm, 144.1791 mm): Track [FEEDBACK_NODE] on F.Cu, length 14.7164 mm
+    @(98.6964 mm, 147.9378 mm): Track [GND] on F.Cu, length 0.1256 mm
+[shorting_items]: Items shorting two nets (nets GND and FEEDBACK_NODE)
+    Local override; error
+    @(98.1625 mm, 157.6750 mm): Track [GND] on F.Cu, length 0.4000 mm
+    @(97.7625 mm, 157.6750 mm): Pad 2 [FEEDBACK_NODE] of R1 on F.Cu
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1250 mm)
+    Local override; error
+    @(97.7625 mm, 157.6750 mm): Pad 2 [FEEDBACK_NODE] of R1 on F.Cu
+    @(98.3875 mm, 157.5941 mm): Track [GND] on F.Cu, length 0.0809 mm
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and GND)
+    Local override; error
+    @(97.7625 mm, 157.6750 mm): Pad 2 [FEEDBACK_NODE] of R1 on F.Cu
+    @(98.3875 mm, 157.6750 mm): Track [GND] on F.Cu, length 0.2250 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1870 mm)
+    Local override; error
+    @(116.5725 mm, 144.1350 mm): Pad 6 [<no net>] of U1 on F.Cu
+    @(116.8012 mm, 141.4032 mm): Track [VCC] on F.Cu, length 1.7019 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1818 mm)
+    Local override; error
+    @(116.5725 mm, 144.1350 mm): Pad 6 [<no net>] of U1 on F.Cu
+    @(116.8012 mm, 143.1051 mm): Track [VCC] on F.Cu, length 0.0387 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1818 mm)
+    Local override; error
+    @(116.5725 mm, 144.1350 mm): Pad 6 [<no net>] of U1 on F.Cu
+    @(116.7625 mm, 143.1051 mm): Track [VCC] on F.Cu, length 0.3218 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.0150 mm)
+    Local override; error
+    @(116.5725 mm, 142.8650 mm): Pad 7 [<no net>] of U1 on F.Cu
+    @(116.9875 mm, 142.8750 mm): Track [VCC] on F.Cu, length 0.2250 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.0400 mm)
+    Local override; error
+    @(116.5725 mm, 144.1350 mm): Pad 6 [<no net>] of U1 on F.Cu
+    @(117.2125 mm, 142.8750 mm): Track [VCC] on F.Cu, length 2.1220 mm
+[shorting_items]: Items shorting two nets (nets VREF and VCC)
+    Local override; error
+    @(87.7625 mm, 124.3250 mm): Pad 2 [VREF] of R4 on F.Cu
+    @(88.6375 mm, 124.3250 mm): Track [VCC] on F.Cu, length 0.8750 mm
+[shorting_items]: Items shorting two nets (nets  and VCC)
+    Local override; error
+    @(116.5725 mm, 144.1350 mm): Pad 6 [<no net>] of U1 on F.Cu
+    @(116.9875 mm, 144.9850 mm): Track [VCC] on F.Cu, length 2.0300 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.0450 mm)
+    Local override; error
+    @(116.5725 mm, 145.4050 mm): Pad 5 [<no net>] of U1 on F.Cu
+    @(112.8246 mm, 146.3000 mm): Track [AMP_OUT] on F.Cu, length 18.6621 mm
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and VIN_COUPLED)
+    Local override; error
+    @(110.2875 mm, 144.1350 mm): Track [FEEDBACK_NODE] on F.Cu, length 1.2750 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and VIN_COUPLED)
+    Local override; error
+    @(108.8370 mm, 144.1500 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.0473 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and VIN_COUPLED)
+    Local override; error
+    @(109.0125 mm, 144.1350 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.0150 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.0750 mm)
+    Local override; error
+    @(105.5625 mm, 144.3000 mm): Track [GND] on F.Cu, length 6.7405 mm
+    @(102.5375 mm, 144.7750 mm): Via [FEEDBACK_NODE] on F.Cu - B.Cu
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and VIN_COUPLED)
+    Local override; error
+    @(108.8204 mm, 144.1973 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.0166 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and VIN_COUPLED)
+    Local override; error
+    @(108.8370 mm, 144.1973 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.0166 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[shorting_items]: Items shorting two nets (nets VIN_COUPLED and FEEDBACK_NODE)
+    Local override; error
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+    @(108.8204 mm, 144.2139 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.5610 mm
+[shorting_items]: Items shorting two nets (nets VIN_COUPLED and FEEDBACK_NODE)
+    Local override; error
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+    @(109.0125 mm, 144.1500 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.1755 mm
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and VIN_COUPLED)
+    Local override; error
+    @(108.7971 mm, 144.1791 mm): Track [FEEDBACK_NODE] on F.Cu, length 9.7301 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[shorting_items]: Items shorting two nets (nets VIN_COUPLED and FEEDBACK_NODE)
+    Local override; error
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+    @(110.2875 mm, 144.1350 mm): Track [FEEDBACK_NODE] on F.Cu, length 1.4904 mm
+[shorting_items]: Items shorting two nets (nets VIN_COUPLED and FEEDBACK_NODE)
+    Local override; error
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+    @(108.7971 mm, 144.1350 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.0441 mm
+[shorting_items]: Items shorting two nets (nets GND and FEEDBACK_NODE)
+    Local override; error
+    @(97.7625 mm, 159.3250 mm): Pad 1 [GND] of R1 on F.Cu
+    @(98.6375 mm, 159.3250 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.8750 mm
+[shorting_items]: Items shorting two nets (nets VREF and GND)
+    Local override; error
+    @(87.7625 mm, 162.6750 mm): Track [VREF] on F.Cu, length 0.7000 mm
+    @(87.7625 mm, 162.6750 mm): Pad 2 [GND] of R5 on F.Cu
+[shorting_items]: Items shorting two nets (nets GND and VREF)
+    Local override; error
+    @(92.7625 mm, 172.6750 mm): Pad 2 [GND] of C4 on F.Cu
+    @(91.8875 mm, 172.6750 mm): Track [VREF] on F.Cu, length 0.8750 mm
+[shorting_items]: Items shorting two nets (nets GND and VREF)
+    Local override; error
+    @(87.7625 mm, 162.6750 mm): Pad 2 [GND] of R5 on F.Cu
+    @(87.6250 mm, 162.6750 mm): Track [VREF] on F.Cu, length 0.8000 mm
+[tracks_crossing]: Tracks crossing
+    Local override; error
+    @(83.8367 mm, 142.9584 mm): Track [VIN_COUPLED] on F.Cu, length 1.2161 mm
+    @(84.3625 mm, 143.1000 mm): Track [VREF] on F.Cu, length 0.6067 mm
+[shorting_items]: Items shorting two nets (nets VIN_COUPLED and VREF)
+    Local override; error
+    @(83.8367 mm, 142.9584 mm): Track [VIN_COUPLED] on F.Cu, length 1.2161 mm
+    @(83.7558 mm, 143.1000 mm): Track [VREF] on F.Cu, length 0.3394 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.0137 mm)
+    Local override; error
+    @(83.7558 mm, 142.7606 mm): Track [VREF] on F.Cu, length 0.2683 mm
+    @(83.8367 mm, 142.9584 mm): Track [VIN_COUPLED] on F.Cu, length 1.2161 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1258 mm)
+    Local override; error
+    @(84.3625 mm, 143.1000 mm): Via [VREF] on F.Cu - B.Cu
+    @(83.8367 mm, 142.9584 mm): Track [VIN_COUPLED] on F.Cu, length 1.2161 mm
+[shorting_items]: Items shorting two nets (nets VREF and VIN_COUPLED)
+    Local override; error
+    @(83.4875 mm, 142.6750 mm): Track [VREF] on F.Cu, length 0.2250 mm
+    @(82.7625 mm, 142.6750 mm): Pad 2 [VIN_COUPLED] of R3 on F.Cu
+[shorting_items]: Items shorting two nets (nets VREF and VIN_COUPLED)
+    Local override; error
+    @(83.2625 mm, 142.6750 mm): Track [VREF] on F.Cu, length 0.5000 mm
+    @(82.7625 mm, 142.6750 mm): Pad 2 [VIN_COUPLED] of R3 on F.Cu
+[shorting_items]: Items shorting two nets (nets VCC and VREF)
+    Local override; error
+    @(87.7625 mm, 122.6750 mm): Pad 1 [VCC] of R4 on F.Cu
+    @(87.6250 mm, 122.6750 mm): Track [VREF] on F.Cu, length 1.0500 mm
+[shorting_items]: Items shorting two nets (nets VREF and VIN_COUPLED)
+    Local override; error
+    @(82.7625 mm, 141.8750 mm): Track [VREF] on F.Cu, length 0.8000 mm
+    @(82.7625 mm, 142.6750 mm): Pad 2 [VIN_COUPLED] of R3 on F.Cu
+[shorting_items]: Items shorting two nets (nets VIN_COUPLED and VREF)
+    Local override; error
+    @(81.8875 mm, 144.1875 mm): Track [VIN_COUPLED] on F.Cu, length 0.8750 mm
+    @(82.7625 mm, 144.3250 mm): Pad 1 [VREF] of R3 on F.Cu
+[shorting_items]: Items shorting two nets (nets VIN_COUPLED and VREF)
+    Local override; error
+    @(82.7625 mm, 144.1875 mm): Track [VIN_COUPLED] on F.Cu, length 0.1375 mm
+    @(82.7625 mm, 144.3250 mm): Pad 1 [VREF] of R3 on F.Cu
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and VIN_COUPLED)
+    Local override; error
+    @(108.9525 mm, 142.8650 mm): Pad 2 [FEEDBACK_NODE] of U1 on F.Cu
+    @(110.2875 mm, 142.8650 mm): Track [VIN_COUPLED] on F.Cu, length 1.4559 mm
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and VIN_COUPLED)
+    Local override; error
+    @(108.9525 mm, 142.8650 mm): Pad 2 [FEEDBACK_NODE] of U1 on F.Cu
+    @(108.8316 mm, 142.8650 mm): Track [VIN_COUPLED] on F.Cu, length 0.0934 mm
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and VIN_COUPLED)
+    Local override; error
+    @(108.9525 mm, 142.8650 mm): Pad 2 [FEEDBACK_NODE] of U1 on F.Cu
+    @(108.8316 mm, 142.9584 mm): Track [VIN_COUPLED] on F.Cu, length 23.7788 mm
+[shorting_items]: Items shorting two nets (nets VREF and VIN_COUPLED)
+    Local override; error
+    @(82.7625 mm, 144.3250 mm): Pad 1 [VREF] of R3 on F.Cu
+    @(83.6125 mm, 144.3250 mm): Track [VIN_COUPLED] on F.Cu, length 0.8500 mm
+[shorting_items]: Items shorting two nets (nets AMP_OUT and FEEDBACK_NODE)
+    Local override; error
+    @(108.9525 mm, 141.5950 mm): Pad 1 [AMP_OUT] of U1 on F.Cu
+    @(108.9525 mm, 142.8650 mm): Pad 2 [FEEDBACK_NODE] of U1 on F.Cu
+[shorting_items]: Items shorting two nets (nets FEEDBACK_NODE and VIN_COUPLED)
+    Local override; error
+    @(108.9525 mm, 142.8650 mm): Pad 2 [FEEDBACK_NODE] of U1 on F.Cu
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[shorting_items]: Items shorting two nets (nets VIN_COUPLED and GND)
+    Local override; error
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+    @(108.9525 mm, 145.4050 mm): Pad 4 [GND] of U1 on F.Cu
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.0000 mm)
+    Local override; error
+    @(116.5725 mm, 145.4050 mm): Pad 5 [<no net>] of U1 on F.Cu
+    @(116.5725 mm, 144.1350 mm): Pad 6 [<no net>] of U1 on F.Cu
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.0000 mm)
+    Local override; error
+    @(116.5725 mm, 144.1350 mm): Pad 6 [<no net>] of U1 on F.Cu
+    @(116.5725 mm, 142.8650 mm): Pad 7 [<no net>] of U1 on F.Cu
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.0000 mm)
+    Local override; error
+    @(116.5725 mm, 142.8650 mm): Pad 7 [<no net>] of U1 on F.Cu
+    @(116.5725 mm, 141.5950 mm): Pad 8 [VCC] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(87.6250 mm, 164.3250 mm): Track [GND] on F.Cu, length 0.8000 mm
+    @(87.7625 mm, 164.3250 mm): Pad 1 [VREF] of R5 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(98.3875 mm, 157.6750 mm): Track [GND] on F.Cu, length 0.2250 mm
+    @(97.7625 mm, 157.6750 mm): Pad 2 [FEEDBACK_NODE] of R1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(98.1625 mm, 157.6750 mm): Track [GND] on F.Cu, length 0.4000 mm
+    @(97.7625 mm, 157.6750 mm): Pad 2 [FEEDBACK_NODE] of R1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(88.6375 mm, 124.3250 mm): Track [VCC] on F.Cu, length 0.8750 mm
+    @(87.7625 mm, 124.3250 mm): Pad 2 [VREF] of R4 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(91.8875 mm, 174.3250 mm): Track [GND] on F.Cu, length 0.8750 mm
+    @(92.7625 mm, 174.3250 mm): Pad 1 [VREF] of C4 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(87.7625 mm, 164.3250 mm): Track [GND] on F.Cu, length 8.9458 mm
+    @(87.7625 mm, 164.3250 mm): Pad 1 [VREF] of R5 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(116.8012 mm, 141.4032 mm): Track [VCC] on F.Cu, length 1.7019 mm
+    @(116.5725 mm, 142.8650 mm): Pad 7 [<no net>] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(96.8875 mm, 157.9925 mm): Track [GND] on F.Cu, length 0.8750 mm
+    @(97.7625 mm, 157.6750 mm): Pad 2 [FEEDBACK_NODE] of R1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(116.8012 mm, 143.1051 mm): Track [VCC] on F.Cu, length 0.0387 mm
+    @(116.5725 mm, 142.8650 mm): Pad 7 [<no net>] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(109.0125 mm, 144.1350 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.0150 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(97.7625 mm, 157.9925 mm): Track [GND] on F.Cu, length 0.3175 mm
+    @(97.7625 mm, 157.6750 mm): Pad 2 [FEEDBACK_NODE] of R1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(112.8246 mm, 146.3000 mm): Track [AMP_OUT] on F.Cu, length 18.6621 mm
+    @(116.5725 mm, 145.4050 mm): Pad 5 [<no net>] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(98.6375 mm, 159.3250 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.8750 mm
+    @(97.7625 mm, 159.3250 mm): Pad 1 [GND] of R1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(116.7625 mm, 143.1051 mm): Track [VCC] on F.Cu, length 0.3218 mm
+    @(116.5725 mm, 142.8650 mm): Pad 7 [<no net>] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(87.7625 mm, 162.6750 mm): Track [VREF] on F.Cu, length 0.7000 mm
+    @(87.7625 mm, 162.6750 mm): Pad 2 [GND] of R5 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(116.9875 mm, 142.8750 mm): Track [VCC] on F.Cu, length 0.2250 mm
+    @(116.5725 mm, 142.8650 mm): Pad 7 [<no net>] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(110.2875 mm, 144.1350 mm): Track [FEEDBACK_NODE] on F.Cu, length 1.2750 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(82.7625 mm, 141.8750 mm): Track [VREF] on F.Cu, length 0.8000 mm
+    @(82.7625 mm, 142.6750 mm): Pad 2 [VIN_COUPLED] of R3 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+    @(108.9525 mm, 142.8650 mm): Pad 2 [FEEDBACK_NODE] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+    @(108.9525 mm, 145.4050 mm): Pad 4 [GND] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(91.8875 mm, 172.6750 mm): Track [VREF] on F.Cu, length 0.8750 mm
+    @(92.7625 mm, 172.6750 mm): Pad 2 [GND] of C4 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(87.6250 mm, 162.6750 mm): Track [VREF] on F.Cu, length 0.8000 mm
+    @(87.7625 mm, 162.6750 mm): Pad 2 [GND] of R5 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(81.8875 mm, 144.1875 mm): Track [VIN_COUPLED] on F.Cu, length 0.8750 mm
+    @(82.7625 mm, 144.3250 mm): Pad 1 [VREF] of R3 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(117.2125 mm, 142.8750 mm): Track [VCC] on F.Cu, length 2.1220 mm
+    @(116.5725 mm, 145.4050 mm): Pad 5 [<no net>] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(82.7625 mm, 144.1875 mm): Track [VIN_COUPLED] on F.Cu, length 0.1375 mm
+    @(82.7625 mm, 144.3250 mm): Pad 1 [VREF] of R3 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(116.5725 mm, 145.4050 mm): Pad 5 [<no net>] of U1 on F.Cu
+    @(116.5725 mm, 144.1350 mm): Pad 6 [<no net>] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(117.2125 mm, 142.8750 mm): Track [VCC] on F.Cu, length 2.1220 mm
+    @(116.5725 mm, 144.1350 mm): Pad 6 [<no net>] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(83.4875 mm, 142.6750 mm): Track [VREF] on F.Cu, length 0.2250 mm
+    @(82.7625 mm, 142.6750 mm): Pad 2 [VIN_COUPLED] of R3 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(110.2875 mm, 142.8650 mm): Track [VIN_COUPLED] on F.Cu, length 1.4559 mm
+    @(108.9525 mm, 142.8650 mm): Pad 2 [FEEDBACK_NODE] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(83.2625 mm, 142.6750 mm): Track [VREF] on F.Cu, length 0.5000 mm
+    @(82.7625 mm, 142.6750 mm): Pad 2 [VIN_COUPLED] of R3 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(108.8316 mm, 142.8650 mm): Track [VIN_COUPLED] on F.Cu, length 0.0934 mm
+    @(108.9525 mm, 142.8650 mm): Pad 2 [FEEDBACK_NODE] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(87.6250 mm, 122.6750 mm): Track [VREF] on F.Cu, length 1.0500 mm
+    @(87.7625 mm, 122.6750 mm): Pad 1 [VCC] of R4 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(109.0125 mm, 144.1500 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.1755 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(116.9875 mm, 144.9850 mm): Track [VCC] on F.Cu, length 2.0300 mm
+    @(116.5725 mm, 145.4050 mm): Pad 5 [<no net>] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(108.8370 mm, 144.1500 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.0473 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(108.8316 mm, 142.9584 mm): Track [VIN_COUPLED] on F.Cu, length 23.7788 mm
+    @(108.9525 mm, 142.8650 mm): Pad 2 [FEEDBACK_NODE] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(116.9875 mm, 144.9850 mm): Track [VCC] on F.Cu, length 2.0300 mm
+    @(116.5725 mm, 144.1350 mm): Pad 6 [<no net>] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(108.8370 mm, 144.1973 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.0166 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(83.6125 mm, 144.3250 mm): Track [VIN_COUPLED] on F.Cu, length 0.8500 mm
+    @(82.7625 mm, 144.3250 mm): Pad 1 [VREF] of R3 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(108.8204 mm, 144.1973 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.0166 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(116.5725 mm, 144.1350 mm): Pad 6 [<no net>] of U1 on F.Cu
+    @(116.5725 mm, 142.8650 mm): Pad 7 [<no net>] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(108.8204 mm, 144.2139 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.5610 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(108.9525 mm, 141.5950 mm): Pad 1 [AMP_OUT] of U1 on F.Cu
+    @(108.9525 mm, 142.8650 mm): Pad 2 [FEEDBACK_NODE] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(110.2875 mm, 144.1350 mm): Track [FEEDBACK_NODE] on F.Cu, length 1.4904 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(116.5725 mm, 142.8650 mm): Pad 7 [<no net>] of U1 on F.Cu
+    @(116.5725 mm, 141.5950 mm): Pad 8 [VCC] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(108.7971 mm, 144.1350 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.0441 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(108.7971 mm, 144.1791 mm): Track [FEEDBACK_NODE] on F.Cu, length 9.7301 mm
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+[track_dangling]: Track has unconnected end
+    Local override; warning
+    @(114.9575 mm, 144.9850 mm): Track [VCC] on F.Cu, length 0.4200 mm
+[track_dangling]: Track has unconnected end
+    Local override; warning
+    @(87.6460 mm, 161.8750 mm): Track [VREF] on F.Cu, length 0.0000 mm
+[track_dangling]: Track has unconnected end
+    Local override; warning
+    @(110.2875 mm, 142.8650 mm): Track [VIN_COUPLED] on F.Cu, length 1.4559 mm
+[silk_overlap]: Silkscreen clearance
+    Rule: board setup constraints silk; warning
+    @(87.2425 mm, 163.7400 mm): Segment of R5 on F.Silkscreen
+    @(86.3625 mm, 163.5000 mm): Reference field of R5
+[silk_overlap]: Silkscreen clearance
+    Rule: board setup constraints silk; warning
+    @(81.3625 mm, 143.5000 mm): Reference field of R3
+    @(82.2425 mm, 143.7400 mm): Segment of R3 on F.Silkscreen
+[silk_overlap]: Silkscreen clearance
+    Rule: board setup constraints silk; warning
+    @(91.3625 mm, 173.5000 mm): Reference field of C4
+    @(92.2425 mm, 173.7400 mm): Segment of C4 on F.Silkscreen
+
+** Found 14 unconnected pads **
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(82.7625 mm, 142.6750 mm): Pad 2 [VIN_COUPLED] of R3 on F.Cu
+    @(85.0528 mm, 142.9584 mm): Track [VIN_COUPLED] on F.Cu, length 1.2161 mm
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(108.9525 mm, 144.1350 mm): Pad 3 [VIN_COUPLED] of U1 on F.Cu
+    @(108.8316 mm, 142.9584 mm): Track [VIN_COUPLED] on F.Cu, length 23.7788 mm
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(82.7625 mm, 144.3250 mm): Pad 1 [VREF] of R3 on F.Cu
+    @(83.7558 mm, 143.1000 mm): Track [VREF] on F.Cu, length 0.3394 mm
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(87.6250 mm, 122.6750 mm): Track [VREF] on F.Cu, length 1.0500 mm
+    @(87.7625 mm, 124.3250 mm): Pad 2 [VREF] of R4 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(87.7625 mm, 162.6750 mm): Track [VREF] on F.Cu, length 0.7000 mm
+    @(87.7625 mm, 164.3250 mm): Pad 1 [VREF] of R5 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(92.7625 mm, 174.3250 mm): Pad 1 [VREF] of C4 on F.Cu
+    @(91.8875 mm, 172.6750 mm): Track [VREF] on F.Cu, length 0.8750 mm
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(99.0670 mm, 158.8955 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.3531 mm
+    @(97.7625 mm, 157.6750 mm): Pad 2 [FEEDBACK_NODE] of R1 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(109.0125 mm, 144.1350 mm): Track [FEEDBACK_NODE] on F.Cu, length 0.0150 mm
+    @(108.9525 mm, 142.8650 mm): Pad 2 [FEEDBACK_NODE] of U1 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(110.2875 mm, 145.4050 mm): Track [AMP_OUT] on F.Cu, length 1.3750 mm
+    @(108.9525 mm, 141.5950 mm): Pad 1 [AMP_OUT] of U1 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(87.7625 mm, 122.6750 mm): Pad 1 [VCC] of R4 on F.Cu
+    @(88.6375 mm, 124.3250 mm): Track [VCC] on F.Cu, length 0.8750 mm
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(87.7625 mm, 164.3250 mm): Track [GND] on F.Cu, length 8.9458 mm
+    @(87.7625 mm, 162.6750 mm): Pad 2 [GND] of R5 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(92.7625 mm, 172.6750 mm): Pad 2 [GND] of C4 on F.Cu
+    @(91.8875 mm, 174.3250 mm): Track [GND] on F.Cu, length 0.8750 mm
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(96.8875 mm, 157.9925 mm): Track [GND] on F.Cu, length 0.8750 mm
+    @(97.7625 mm, 159.3250 mm): Pad 1 [GND] of R1 on F.Cu
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(108.9525 mm, 145.4050 mm): Pad 4 [GND] of U1 on F.Cu
+    @(105.7278 mm, 140.6450 mm): Track [GND] on B.Cu, length 3.4897 mm
+
+** Found 0 Footprint errors **
+
+** Ignored checks **
+    - Footprint has no courtyard defined
+    - Track endpoint not centered on via
+    - Tuning profile track geometries
+    - Footprint doesn't match symbol's footprint filters
+    - Footprint component type doesn't match footprint pads
+
+** End of Report **

@@ -60,13 +60,14 @@
     </label>
     <div class="sep"></div>
     <label>Start:
-      <input type="number" id="tStartInput" value="{{T_START_MS}}" step="0.01">
+      <input type="text" id="tStartInput" value="0" size="8">
     </label>
     <label>End:
-      <input type="number" id="tEndInput" value="{{T_END_MS}}" step="0.01">
+      <input type="text" id="tEndInput" value="{{T_END_MS}}m" size="8" placeholder="e.g. 50m">
     </label>
     <button onclick="applyTimeRange()">Apply</button>
     <div class="sep"></div>
+
     <label><input type="checkbox" id="showGrid" checked onchange="toggleGrid()"> Grid</label>
     <label><input type="checkbox" id="showLegend" checked onchange="toggleLegend()"> Legend</label>
     <div class="sep"></div>
@@ -118,45 +119,30 @@
   var allTraces = [];
   var visible = [];
 
-  probes.forEach(function(p, idx) {
-    var trace = {
-      x: timeMs,
-      y: p.values,
-      name: p.name,
-      type: "scatter",
-      mode: "lines",
-      line: { color: p.color, width: 1.5 },
-      visible: true,
+  function traceMode(len) { return len > 1 ? "lines" : "lines+markers"; }
+  function makeTrace(analysisType, x, probe, i, visible) {
+    var isOp = analysisType === "op";
+    if (isOp) {
+      return { x: [probe.name], y: [probe.values[0]], name: probe.name, type: "bar", visible: true };
+    }
+    return {
+      x: x, y: probe.values, name: probe.name, type: "scatter",
+      mode: traceMode(x.length),
+      line: { color: PALETTE[i % PALETTE.length], width: 1.5 },
+      visible: visible !== undefined ? visible : true,
     };
-    allTraces.push(trace);
+  }
+  probes.forEach(function(p, idx) {
+    allTraces.push(makeTrace("{{ANALYSIS_TYPE}}", timeMs, p, idx));
     visible.push(true);
   });
 
-  var isAc = timeData.length > 0 && xLabel.indexOf("Frequency") >= 0;
-  var layout = {
-    margin: { l: 60, r: 20, t: 30, b: 50 },
-    xaxis: {
-      title: xLabel,
-      gridcolor: "#e0e0e0",
-      zeroline: true,
-      zerolinecolor: "#bbb",
-      type: isAc ? "log" : "linear",
-    },
-    yaxis: {
-      title: isAc ? "Magnitude (dB) / Phase (deg)" : "Voltage (V)",
-      gridcolor: "#e0e0e0",
-      zeroline: true,
-      zerolinecolor: "#bbb",
-    },
-    legend: { orientation: "h", y: -0.15 },
-    hovermode: "x unified",
-    paper_bgcolor: "#fff",
-    plot_bgcolor: "#fff",
-  };
+  var layout = buildLayout("{{ANALYSIS_TYPE}}", xLabel);
 
   var config = {
     responsive: true,
     displayModeBar: true,
+    scrollZoom: true,
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
     displaylogo: false,
   };
@@ -193,11 +179,44 @@
   };
 
   window.applyTimeRange = function() {
-    var tStart = parseFloat(document.getElementById("tStartInput").value);
-    var tEnd = parseFloat(document.getElementById("tEndInput").value);
-    if (isNaN(tStart) || isNaN(tEnd) || tStart >= tEnd) return;
-    Plotly.relayout("chart", {
-      "xaxis.range": [tStart, tEnd],
+    var tEndRaw = document.getElementById("tEndInput").value.trim();
+    if (!tEndRaw) return;
+    // Re-run simulation with updated duration (raw ngspice string, e.g. "50m")
+    var curAnalysis = document.getElementById("analysisType").value;
+    var loading = document.getElementById("sliderLoading");
+    loading.innerHTML = '<span class="slider-loading"></span>';
+
+    var body = {
+      fixture: "{{DESIGN_ID}}",
+      components: getSliderValues(),
+      analysisType: curAnalysis,
+      duration: tEndRaw,
+    };
+
+    fetch(SIM_SERVER + "/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      loading.innerHTML = "";
+      if (!data.ok) {
+        console.error("Time range simulation error:", data.error);
+        loading.textContent = "Error: " + data.error;
+        return;
+      }
+      var newLayout = buildLayout(data.analysisType, data.xAxisLabel);
+      var newTraces = data.probes.map(function(p, i) {
+        return makeTrace(data.analysisType, data.xValues, p, i, visible[i]);
+      });
+      while (visible.length < newTraces.length) visible.push(true);
+      Plotly.react("chart", newTraces, newLayout, config);
+      document.getElementById("netlistPre").textContent = data.netlist;
+    })
+    .catch(function(e) {
+      loading.innerHTML = "";
+      console.error("Time range simulation error:", e);
     });
   };
 
@@ -216,28 +235,106 @@
       "showlegend": show,
     });
   };
-
   window.toggleNetlist = function() {
     var pre = document.getElementById("netlistPre");
     pre.style.display = pre.style.display === "none" ? "block" : "none";
   };
+
+  function buildLayout(analysisType, xLabel) {
+    var isAc = analysisType === "ac" || (xLabel && xLabel.indexOf("Frequency") >= 0);
+    return {
+      margin: { l: 60, r: 20, t: 30, b: 50 },
+      xaxis: {
+        title: xLabel || "Time (ms)",
+        gridcolor: "#e0e0e0",
+        zeroline: true,
+        zerolinecolor: "#bbb",
+        type: isAc ? "log" : "linear",
+        autorange: true,
+      },
+      yaxis: {
+        title: isAc ? "Magnitude (dB) / Phase (deg)" : "Voltage (V)",
+        gridcolor: "#e0e0e0",
+        zeroline: true,
+        zerolinecolor: "#bbb",
+        autorange: true,
+      },
+      legend: { orientation: "h", y: -0.15 },
+      hovermode: "x unified",
+      paper_bgcolor: "#fff",
+      plot_bgcolor: "#fff",
+    };
+  }
 
   window.switchAnalysis = function() {
     var sel = document.getElementById("analysisType");
     var newType = sel.value;
     var currentType = "{{ANALYSIS_TYPE}}";
     if (newType === currentType) return;
-    // Navigate using explicit filename map baked into this page at generation time.
-    // The map contains actual filenames (e.g. "rc_lowpass_ac_001_ac_interactive.html")
-    // because different analysis types may use different fixtures (e.g. AC uses
-    // rc_lowpass_ac_001, not rc_lowpass_001).
-    var fileMap = {{ANALYSIS_FILE_MAP}};
-    if (fileMap && fileMap[newType]) {
-      window.location.href = fileMap[newType];
-    } else {
-      alert("No pre-generated file for " + newType.toUpperCase() + " analysis for this fixture.");
+
+    // Re-run simulation with new analysis type via live server
+    var oldText = sel.options[sel.selectedIndex].text;
+    sel.options[sel.selectedIndex].text = oldText + " (loading...)";
+
+    var tEndRaw = document.getElementById("tEndInput").value.trim();
+    var body = {
+      fixture: "{{DESIGN_ID}}",
+      components: getSliderValues(),
+      analysisType: newType,
+      duration: tEndRaw || undefined,
+    };
+
+    fetch(SIM_SERVER + "/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      sel.options[sel.selectedIndex].text = oldText;
+      if (!data.ok) {
+        console.error("Analysis switch error:", data.error);
+        sel.value = currentType;
+        return;
+      }
+
+      currentType = newType;
+      var newLayout = buildLayout(data.analysisType, data.xAxisLabel);
+      var newTraces = data.probes.map(function(p, i) {
+        return makeTrace(data.analysisType, data.xValues, p, i, true);
+      });
+      visible = newTraces.map(function() { return true; });
+
+      Plotly.newPlot("chart", newTraces, newLayout, config);
+      document.getElementById("netlistPre").textContent = data.netlist;
+
+      // Update signal table
+      var tbody = document.getElementById("signalTableBody");
+      tbody.innerHTML = "";
+      data.probes.forEach(function(p, idx) {
+        var vals = p.values;
+        var max = -Infinity, min = Infinity;
+        for (var i = 0; i < vals.length; i++) {
+          if (vals[i] > max) max = vals[i];
+          if (vals[i] < min) min = vals[i];
+        }
+        if (!isFinite(max)) max = 0;
+        if (!isFinite(min)) min = 0;
+        var tr = document.createElement("tr");
+        tr.innerHTML =
+          '<td class="color-cell"><span class="swatch" style="background:' + p.color + '"></span></td>' +
+          '<td><label><input type="checkbox" data-idx="' + idx + '" checked onchange="toggleTrace(this)"> ' + p.name + '</label></td>' +
+          '<td>' + p.type + '</td>' +
+          '<td>' + max.toFixed(3) + '</td>' +
+          '<td>' + min.toFixed(3) + '</td>';
+        tbody.appendChild(tr);
+      });
+    })
+    .catch(function(e) {
+      sel.options[sel.selectedIndex].text = oldText;
       sel.value = currentType;
-    }
+      console.error("Switch analysis failed:", e);
+    });
   };
 
   // -----------------------------------------------------------------------
@@ -368,10 +465,13 @@
     var loading = document.getElementById("sliderLoading");
     loading.innerHTML = '<span class="slider-loading"></span>';
 
+    var curAnalysis = document.getElementById("analysisType").value;
+    var tEndRaw = document.getElementById("tEndInput").value.trim();
     var body = {
       fixture: "{{DESIGN_ID}}",
       components: getSliderValues(),
-      analysisType: "{{ANALYSIS_TYPE}}"
+      analysisType: curAnalysis,
+      duration: tEndRaw || undefined,
     };
 
     fetch(SIM_SERVER + "/simulate", {
@@ -388,23 +488,16 @@
         return;
       }
       // Update chart with new data
+      var newLayout = buildLayout(data.analysisType, data.xAxisLabel);
       var newTraces = data.probes.map(function(p, i) {
-        return {
-          x: data.analysisType === "tran"
-            ? data.xValues.map(function(t) { return t * 1000; })
-            : data.xValues,
-          y: p.values,
-          name: p.name,
-          type: "scatter",
-          mode: "lines",
-          line: { color: PALETTE[i % PALETTE.length], width: 1.5 },
-          visible: visible[i] !== false,
-        };
+        return makeTrace(data.analysisType, data.xValues, p, i, visible[i]);
       });
 
       // Update visible array for new probe count
       while (visible.length < newTraces.length) visible.push(true);
 
+      // Persist layout for future slider updates
+      layout = newLayout;
       Plotly.react("chart", newTraces, layout, config);
 
       // Update netlist display

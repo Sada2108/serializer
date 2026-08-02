@@ -1,4 +1,4 @@
-// Open_Forge — CircuitJS circuit translator.
+// Serializer — CircuitJS circuit translator.
 //
 // Converts our NIR fixture data into Falstad CircuitJS's plaintext circuit
 // format. The format is documented in the CircuitJS1 source:
@@ -15,6 +15,7 @@
 export interface CircuitJsComponent {
   type: string
   ref: string
+  component_type?: string
   value?: string | null
 }
 

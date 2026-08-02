@@ -1,4 +1,4 @@
-"""Open_Forge — Python wrapper end-to-end test for simulator (Layer 4).
+"""Serializer — Python wrapper end-to-end test for simulator (Layer 4).
 
 Loads the RC circuit netlist fixture, calls `simulator.simulate_netlist`
 (Python wrapper around `simulator.ts`), and asserts the returned payload

@@ -140,10 +140,11 @@ function buildFootprintBlocks(
   const cadComponents = circuitJson.filter((e: any) => e.type === "cad_component") as any[]
   const silkscreenTexts = circuitJson.filter((e: any) => e.type === "pcb_silkscreen_text") as any[]
   const smtpads = circuitJson.filter((e: any) => e.type === "pcb_smtpad") as any[]
+  const platedHoles = circuitJson.filter((e: any) => e.type === "pcb_plated_hole") as any[]
   const pcbPorts = circuitJson.filter((e: any) => e.type === "pcb_port") as any[]
   const sourceTraces = circuitJson.filter((e: any) => e.type === "source_trace") as any[]
 
-  // Build pad -> net mapping: pcb_smtpad -> pcb_port -> source_port -> source_trace -> source_net
+  // Build net assignment lookup structures
   const portByPcbPortId = new Map(pcbPorts.map((p: any) => [p.pcb_port_id, p]))
   const traceBySourcePortId = new Map<string, any>()
   for (const st of sourceTraces) {
@@ -155,7 +156,28 @@ function buildFootprintBlocks(
   for (const n of sourceNets) {
     netIdToName.set(n.source_net_id, n.name ?? n.source_net_id)
   }
-  // smtpad -> net name
+  // source_port -> net name
+  const sourcePortNetMap = new Map<string, string>()
+  for (const st of sourceTraces) {
+    for (const spId of (st.connected_source_port_ids ?? [])) {
+      const netId = st.connected_source_net_ids?.[0]
+      if (netId) sourcePortNetMap.set(spId, netIdToName.get(netId) ?? "")
+    }
+  }
+  // source_port grouped by source_component_id
+  const sourcePortsByComp = new Map<string, any[]>()
+  {
+    const srcPorts = circuitJson.filter((e: any) => e.type === "source_port") as any[]
+    for (const sp of srcPorts) {
+      if (!sp.source_component_id) continue
+      if (!sourcePortsByComp.has(sp.source_component_id)) sourcePortsByComp.set(sp.source_component_id, [])
+      sourcePortsByComp.get(sp.source_component_id)!.push(sp)
+    }
+  }
+  // source_component_id by pcb_component_id
+  const srcCompIdByPcbCompId = new Map(pcbComponents.map((c: any) => [c.pcb_component_id, c.source_component_id]))
+
+  // smtpad -> net name (via pcb_port chain — reliable when port IDs are correct)
   const padNetMap = new Map<string, string>()
   for (const pad of smtpads) {
     if (!pad.pcb_port_id) continue
@@ -167,6 +189,47 @@ function buildFootprintBlocks(
     if (netName) padNetMap.set(pad.pcb_smtpad_id, netName)
   }
 
+  // plated hole -> net name
+  // Use pcb_port chain as primary, fall back to component-level assignment
+  // (CircuitRunner may assign wrong pcb_port IDs to plated holes)
+  const phNetMap = new Map<string, string>()
+  for (const ph of platedHoles) {
+    const srcCompId = srcCompIdByPcbCompId.get(ph.pcb_component_id)
+    // Try pcb_port chain first
+    if (ph.pcb_port_id) {
+      const port = portByPcbPortId.get(ph.pcb_port_id)
+      if (port?.source_port_id) {
+        // Verify this source_port belongs to the same component
+        const srcPorts = sourcePortsByComp.get(srcCompId ?? "") ?? []
+        const srcPortIds = new Set(srcPorts.map((s: any) => s.source_port_id))
+        if (srcPortIds.has(port.source_port_id)) {
+          const trace = traceBySourcePortId.get(port.source_port_id)
+          if (trace?.connected_source_net_ids?.length) {
+            const netName = netIdToName.get(trace.connected_source_net_ids[0])
+            if (netName) { phNetMap.set(ph.pcb_plated_hole_id, netName); continue }
+          }
+        }
+      }
+    }
+    // Fallback: match by position or port_hints within the component
+    if (srcCompId) {
+      const srcPorts = sourcePortsByComp.get(srcCompId) ?? []
+      // Sort by y (top-to-bottom for vertical connectors)
+      const sortedSrcPorts = [...srcPorts].sort((a: any, b: any) => {
+        const pa = portByPcbPortId.get(a.pcb_port_id)
+        const pb = portByPcbPortId.get(b.pcb_port_id)
+        return (pb?.y ?? 0) - (pa?.y ?? 0) // descending y = top to bottom
+      })
+      const hint = (ph.port_hints ?? []).find((h: string) => /^\d+$/.test(h))
+      let matchIdx = hint ? parseInt(hint) - 1 : -1
+      if (matchIdx >= 0 && matchIdx < sortedSrcPorts.length) {
+        const sp = sortedSrcPorts[matchIdx]
+        const netName = sourcePortNetMap.get(sp.source_port_id)
+        if (netName) phNetMap.set(ph.pcb_plated_hole_id, netName)
+      }
+    }
+  }
+
   const sourceCompMap = new Map(sourceComponents.map((c) => [c.source_component_id, c]))
   const cadCompByPcbId = new Map(cadComponents.map((c) => [c.pcb_component_id, c]))
   const silkByPcbId = new Map(silkscreenTexts.map((s) => [s.pcb_component_id, s]))
@@ -174,6 +237,18 @@ function buildFootprintBlocks(
     if (!pad.pcb_component_id) return map
     if (!map.has(pad.pcb_component_id)) map.set(pad.pcb_component_id, [])
     map.get(pad.pcb_component_id).push(pad)
+    return map
+  }, new Map<string, any[]>())
+  // Also add plated holes to padsByPcbId for collision detection
+  for (const ph of platedHoles) {
+    if (!ph.pcb_component_id) continue
+    if (!padsByPcbId.has(ph.pcb_component_id)) padsByPcbId.set(ph.pcb_component_id, [])
+    padsByPcbId.get(ph.pcb_component_id).push(ph)
+  }
+  const phsByPcbId = platedHoles.reduce((map, ph) => {
+    if (!ph.pcb_component_id) return map
+    if (!map.has(ph.pcb_component_id)) map.set(ph.pcb_component_id, [])
+    map.get(ph.pcb_component_id).push(ph)
     return map
   }, new Map<string, any[]>())
 
@@ -185,6 +260,8 @@ function buildFootprintBlocks(
     const cad = cadCompByPcbId.get(comp.pcb_component_id)
     const silk = silkByPcbId.get(comp.pcb_component_id)
     const pads = padsByPcbId.get(comp.pcb_component_id) ?? []
+    const phs = phsByPcbId.get(comp.pcb_component_id) ?? []
+    const hasThruHole = phs.length > 0
 
     let footprintPath = extractFootprintPath(cad) ?? "Resistor_SMD/R_0603_1608Metric"
     let footprintValue = footprintPath
@@ -199,28 +276,56 @@ function buildFootprintBlocks(
     const rotDeg = comp.rotation ?? 0
 
     const padLines: string[] = []
-    for (let pi = 0; pi < pads.length; pi++) {
-      const pad = pads[pi]
+    const rotRad = (comp.rotation ?? 0) * Math.PI / 180
+    const cosR = Math.cos(rotRad)
+    const sinR = Math.sin(rotRad)
+
+    // Generate SMD pad entries
+    const smtPadsForComp = smtpads.filter((p: any) => p.pcb_component_id === comp.pcb_component_id)
+    for (let pi = 0; pi < smtPadsForComp.length; pi++) {
+      const pad = smtPadsForComp[pi]
       const padLayer = layerToKicad(pad.layer ?? "top")
-      // Inverse-rotate the absolute pad position to get KiCad-relative coordinates.
-      // KiCad applies the footprint rotation to relative pad positions, so we must
-      // undo that rotation to ensure pads end up at the correct absolute positions.
-      const rotRad = (comp.rotation ?? 0) * Math.PI / 180
-      const cosR = Math.cos(rotRad)
-      const sinR = Math.sin(rotRad)
       const dx = pad.x - comp.center.x
       const dy = pad.y - comp.center.y
-      const padX = cosR * dx + sinR * dy
-      const padY = -sinR * dx + cosR * dy
+      // KiCad uses CW rotation: local = CW⁻¹(world_offset)
+      // CW⁻¹(x,y) = (x*cosθ - y*sinθ, x*sinθ + y*cosθ)
+      const padX = cosR * dx - sinR * dy
+      const padY = sinR * dx + cosR * dy
       const padW = pad.width ?? 0.6
       const padH = pad.height ?? 0.6
       const padNum = (pad.port_hints?.find((h: string) => /^\d+$/.test(h)) ?? String(pi + 1)) as string
-
       const maskLayer = padLayer.replace('.Cu', '.Mask')
       const netName = padNetMap.get(pad.pcb_smtpad_id)
       const netProp = netName ? ` (net "${netName}")` : ` (net "")`
       padLines.push(
         `        (pad ${padNum} smd roundrect (at ${padX.toFixed(4)} ${padY.toFixed(4)}) (size ${padW.toFixed(4)} ${padH.toFixed(4)}) (layers "${padLayer}" "${maskLayer}") (roundrect_rratio 0.25)${netProp})`
+      )
+    }
+
+    // Generate through-hole pad entries for plated holes
+    for (let pi = 0; pi < phs.length; pi++) {
+      const ph = phs[pi]
+      const dx = ph.x - comp.center.x
+      const dy = ph.y - comp.center.y
+      const padX = cosR * dx - sinR * dy
+      const padY = sinR * dx + cosR * dy
+      const padNum = (ph.port_hints?.find((h: string) => /^\d+$/.test(h)) ?? String(smtPadsForComp.length + pi + 1)) as string
+      const drillDiam = ph.hole_diameter ?? 1.0
+      let padW: number, padH: number, kicadShape: string
+      if (ph.shape === "circular_hole_with_rect_pad") {
+        padW = ph.rect_pad_width ?? 1.7
+        padH = ph.rect_pad_height ?? 1.7
+        kicadShape = "oval"
+      } else {
+        const d = ph.outer_diameter ?? 1.7
+        padW = d
+        padH = d
+        kicadShape = "circle"
+      }
+      const netName = phNetMap.get(ph.pcb_plated_hole_id)
+      const netProp = netName ? ` (net "${netName}")` : ` (net "")`
+      padLines.push(
+        `        (pad ${padNum} thru_hole ${kicadShape} (at ${padX.toFixed(4)} ${padY.toFixed(4)}) (size ${padW.toFixed(4)} ${padH.toFixed(4)}) (drill ${drillDiam.toFixed(4)}) (layers "*.Cu")${netProp})`
       )
     }
 
@@ -235,8 +340,6 @@ function buildFootprintBlocks(
     const halfW = comp.width / 2
     const halfH = comp.height / 2
     const compPads = pads.filter((p: any) => p.pcb_component_id === comp.pcb_component_id)
-    const cosR = Math.cos((rotDeg * Math.PI) / 180)
-    const sinR = Math.sin((rotDeg * Math.PI) / 180)
     // Inverse-rotate world pad positions to local frame
     const localPads = compPads.map((p: any) => {
       const wx = p.x - comp.center.x
@@ -306,7 +409,7 @@ function buildFootprintBlocks(
       `    (uuid ${footprintUuid})\n` +
       `    (at ${comp.center.x.toFixed(4)} ${comp.center.y.toFixed(4)} ${rotDeg})\n` +
       `    (descr "Generated by my-project")\n` +
-      `    (attr smd)\n` +
+      `    (attr ${hasThruHole ? "through_hole" : "smd"})\n` +
       `    (property "Reference" "${refDes}"\n` +
       `      (at ${refX.toFixed(4)} ${refY.toFixed(4)} ${silkRef.ccw_rotation ?? 0})\n` +
       `      (layer "${silkLayer}")\n` +
@@ -525,6 +628,8 @@ ${generalSection}
   )
 ${layersSection}
 ${setupSection}
+
+${netSection}
 
 ${boardOutline}
 

@@ -1,4 +1,4 @@
-// Open_Forge — Circuit JSON to SPICE netlist converter (Layer 4 simulator).
+// Serializer — Circuit JSON to SPICE netlist converter (Layer 4 simulator).
 //
 // Converts the Circuit JSON shape produced by serializer/serializer.ts's
 // serializeNir() into a SPICE netlist string suitable for ngspice.
@@ -49,7 +49,7 @@ type NirV01 = {
 }
 
 type NirV11 = {
-  schema_version: "1.1"
+  schema_version: string
   components: Array<{
     ref: string
     component_type: string
@@ -128,7 +128,7 @@ function detectNirVersion(nir: NirInput): "v0.1" | "v1.1" | "unknown" {
   if (nir && typeof nir === "object") {
     const o = nir as Record<string, unknown>
     if (o["nir_schema_version"] === "0.1" || o["circuit_json"]) return "v0.1"
-    if (o["schema_version"] === "1.1" && Array.isArray(o["components"])) return "v1.1"
+    if ((o["schema_version"] === "1.1" || o["schema_version"] === "1.2") && Array.isArray(o["components"])) return "v1.1"
   }
   return "unknown"
 }
@@ -151,13 +151,13 @@ export interface DcSweepConfig {
  *
  * @param circuitJson - Output from serializeNir() (AnyCircuitElement[])
  * @param nir - Original NIR input to serializeNir() (needed for v1.1 values)
- * @param opts - Optional: analysisType ("tran"|"op"|"dc"), dcSweep config
+ * @param opts - Optional: analysisType ("tran"|"op"|"dc"|"ac"|"fft"), dcSweep config
  * @returns NetlistResult with netlist string, node map, and any warnings
  */
 export function netlistFromCircuitJson(
   circuitJson: AnyCircuitElement[],
   nir: NirInput,
-  opts?: { analysisType?: "tran" | "op" | "dc"; dcSweep?: DcSweepConfig },
+  opts?: { analysisType?: "tran" | "op" | "dc" | "ac" | "fft"; dcSweep?: DcSweepConfig; timeStep?: string; duration?: string },
 ): NetlistResult {
   const warnings: string[] = []
 
@@ -308,7 +308,7 @@ export function netlistFromCircuitJson(
   const analysisType = opts?.analysisType ?? "tran"
 
   // Title line
-  spiceLines.push("* Open_Forge generated netlist (from Circuit JSON + NIR)")
+  spiceLines.push("* Serializer generated netlist (from Circuit JSON + NIR)")
   spiceLines.push("")
 
   for (const comp of components) {
@@ -322,7 +322,7 @@ export function netlistFromCircuitJson(
       if (comp.resistance != null) compType = "resistor"
       else if (comp.capacitance != null) compType = "capacitor"
       else if (comp.inductance != null) compType = "inductor"
-      else if (comp.voltage != null && (comp.name ?? "").startsWith("V")) compType = "voltage_source"
+      else if (comp.voltage != null && String(comp.name ?? "").startsWith("V")) compType = "voltage_source"
       else compType = String(comp.type ?? "").toLowerCase()
     }
 
@@ -575,14 +575,14 @@ export function netlistFromCircuitJson(
     case "fft": {
       // FFT needs a transient simulation first, then .four analysis
       // Use SIN source for periodic signal (set in voltage_source case)
-      spiceLines.push(".tran 10u 10m")
+      spiceLines.push(`.tran ${opts?.timeStep ?? "10u"} ${opts?.duration ?? "10m"}`)
       // .four <freq> <var> — fundamental freq = 1kHz, analyze v(2)
       spiceLines.push(".four 1k v(2)")
       break
     }
     case "tran":
     default:
-      spiceLines.push(".tran 1m 10m")
+      spiceLines.push(`.tran ${opts?.timeStep ?? "1m"} ${opts?.duration ?? "10m"}`)
       break
   }
   spiceLines.push(".end")

@@ -1,4 +1,4 @@
-// Open_Forge — ngspice Fourier analysis output parser.
+// Serializer — ngspice Fourier analysis output parser.
 //
 // Parses the Fourier analysis output from ngspice log files.
 // The output format is:

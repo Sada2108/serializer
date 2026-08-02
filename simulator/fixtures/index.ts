@@ -1,4 +1,4 @@
-// Open_Forge — Simulator fixture loader (Layer 4).
+// Serializer — Simulator fixture loader (Layer 4).
 //
 // Typed loaders for simulator test fixtures.
 

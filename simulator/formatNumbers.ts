@@ -1,4 +1,4 @@
-// Open_Forge — Number formatting utilities for simulation output (Layer 4).
+// Serializer — Number formatting utilities for simulation output (Layer 4).
 //
 // Provides human-readable engineering notation with SI unit prefixes for
 // displaying simulation vectors. Does NOT modify the raw numeric data.
@@ -22,7 +22,7 @@ export interface FormatOptions {
  * SI prefix table for engineering notation.
  * Maps exponent (multiple of 3) to prefix symbol.
  */
-const SI_PREFIXES: Record<number, string> = {
+const SI_PREFIXES: Record<string, string> = {
   "-24": "y", "-21": "z", "-18": "a", "-15": "f", "-12": "p", "-9": "n",
   "-6": "µ", "-3": "m", "0": "", "3": "k", "6": "M", "9": "G", "12": "T", "15": "P", "18": "E",
 }

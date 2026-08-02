@@ -15,8 +15,12 @@
     "sourceMap": true,
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "types": [
-      "tscircuit"
+      "bun",
+      "tscircuit",
+      "node"
     ]
   },
   "include": [
