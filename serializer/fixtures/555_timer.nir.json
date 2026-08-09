@@ -1,0 +1,635 @@
+{
+  "schema_version": "1.2",
+  "design_id": "555_timer_cae_test_circuit",
+  "prompt": "Design a 555 Timer CAE Test Circuit utilizing a TLC555 timer, a 2N3904 NPN transistor in the feedback loop, and test points for probing. The circuit should be configured for SPICE simulation and PCB layout.",
+  "design_methodology": "mixed_signal",
+  "created_at": "2024-02-07T00:00:00Z",
+  "pipeline_version": "1.2",
+  "topology": "555_Timer_Transistor_Feedback_Oscillator",
+  "_NEW_board_class": {
+    "_comment": "Board classification derived from the KiCad PCB file.",
+    "layer_class": "double_layer",
+    "rigidity_class": "rigid",
+    "signal_domain_class": "mixed_signal",
+    "functional_domain_class": "test_and_measurement",
+    "material_class": "FR4_standard",
+    "volume_class": "prototype_low_volume",
+    "confidence": 1.0,
+    "source": "derived_from_topology_and_board_spec"
+  },
+  "_NEW_power_tree": {
+    "input_source": {
+      "type": "external_supply_or_spice_vpulse",
+      "voltage_min_v": 5.0,
+      "voltage_max_v": 15.0,
+      "typical_capacity_mah": null
+    },
+    "rails": [
+      {
+        "rail_name": "/POWER",
+        "nominal_voltage_v": 15.0,
+        "regulator_ref": "V1",
+        "regulator_type": "spice_vpulse",
+        "quiescent_current_ua": null,
+        "max_load_current_ua": null,
+        "consumers": [
+          "U1",
+          "Q1",
+          "TP2"
+        ]
+      }
+    ],
+    "power_budget_table": [],
+    "total_budget_ua": null,
+    "total_estimated_ua": null,
+    "margin_ua": null,
+    "regulator_topology_note": "Direct power from external source/simulation VPULSE. No onboard regulators are used."
+  },
+  "components": [
+    {
+      "ref": "U1",
+      "component_id": "TLC555",
+      "component_type": "timer_ic",
+      "footprint": "Package_DIP:DIP-8_W7.62mm_LongPads",
+      "footprint_geometry_ref": "tscircuit_builtin:DIP-8",
+      "value": "TLC555",
+      "manufacturer": "Texas Instruments",
+      "datasheet_confidence": 1.0,
+      "justification": "IC OSC SINGLE TIMER 2.1MHZ 8-DIP",
+      "position": {
+        "x_mm": 149.86,
+        "y_mm": 90.17,
+        "rotation_deg": 0.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "kicad_pcb",
+      "confidence_by_layer": {
+        "layer_1_intent": 1.0,
+        "layer_2_retrieval": 1.0,
+        "layer_3_verification": 1.0
+      },
+      "_NEW_courtyard_mm": {
+        "x": 10.55,
+        "y": 10.7,
+        "note": "Derived from courtyard boundaries in footprint."
+      },
+      "_NEW_thermal_relief_required": false
+    },
+    {
+      "ref": "Q1",
+      "component_id": "2N3904",
+      "component_type": "transistor_bjt_npn",
+      "footprint": "Package_TO_SOT_THT:TO-92_Inline",
+      "footprint_geometry_ref": "tscircuit_builtin:TO-92",
+      "value": "2N3904",
+      "manufacturer": "Generic",
+      "datasheet_confidence": 1.0,
+      "justification": "0.2A Ic, 40V Vce, Small Signal NPN Transistor, TO-92",
+      "position": {
+        "x_mm": 126.9492,
+        "y_mm": 82.5246,
+        "rotation_deg": 0.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "kicad_pcb",
+      "confidence_by_layer": {
+        "layer_1_intent": 1.0,
+        "layer_2_retrieval": 1.0,
+        "layer_3_verification": 1.0
+      }
+    },
+    {
+      "ref": "R1",
+      "component_id": "CFR-25JR-52-10K",
+      "component_type": "resistor",
+      "footprint": "Resistor_THT:R_Axial_DIN0411_L9.9mm_D3.6mm_P20.32mm_Horizontal",
+      "footprint_geometry_ref": "tscircuit_builtin:Axial",
+      "value": "60K",
+      "manufacturer": "YAGEO",
+      "datasheet_confidence": 1.0,
+      "justification": "Feedback loop resistor",
+      "position": {
+        "x_mm": 127.0,
+        "y_mm": 88.9,
+        "rotation_deg": -90.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "kicad_pcb",
+      "confidence_by_layer": {
+        "layer_1_intent": 1.0,
+        "layer_2_retrieval": 1.0,
+        "layer_3_verification": 1.0
+      }
+    },
+    {
+      "ref": "R2",
+      "component_id": "CFR-25JR-52-10K",
+      "component_type": "resistor",
+      "footprint": "Resistor_THT:R_Axial_DIN0411_L9.9mm_D3.6mm_P20.32mm_Horizontal",
+      "footprint_geometry_ref": "tscircuit_builtin:Axial",
+      "value": "100K",
+      "manufacturer": "YAGEO",
+      "datasheet_confidence": 1.0,
+      "justification": "Discharge path resistor",
+      "position": {
+        "x_mm": 134.62,
+        "y_mm": 88.9,
+        "rotation_deg": -90.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "kicad_pcb",
+      "confidence_by_layer": {
+        "layer_1_intent": 1.0,
+        "layer_2_retrieval": 1.0,
+        "layer_3_verification": 1.0
+      }
+    },
+    {
+      "ref": "R3",
+      "component_id": "CFR-25JR-52-100K",
+      "component_type": "resistor",
+      "footprint": "Resistor_THT:R_Axial_DIN0411_L9.9mm_D3.6mm_P20.32mm_Horizontal",
+      "footprint_geometry_ref": "tscircuit_builtin:Axial",
+      "value": "100K",
+      "manufacturer": "YAGEO",
+      "datasheet_confidence": 1.0,
+      "justification": "Transistor base biasing resistor",
+      "position": {
+        "x_mm": 156.21,
+        "y_mm": 81.28,
+        "rotation_deg": 180.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "kicad_pcb",
+      "confidence_by_layer": {
+        "layer_1_intent": 1.0,
+        "layer_2_retrieval": 1.0,
+        "layer_3_verification": 1.0
+      }
+    },
+    {
+      "ref": "C1",
+      "component_id": "CCR06CG103FS",
+      "component_type": "capacitor",
+      "footprint": "Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm",
+      "footprint_geometry_ref": "tscircuit_builtin:C_Disc",
+      "value": "1uF",
+      "manufacturer": "KEMET",
+      "datasheet_confidence": 1.0,
+      "justification": "Timing capacitor",
+      "position": {
+        "x_mm": 144.1055,
+        "y_mm": 110.8441,
+        "rotation_deg": 90.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "kicad_pcb",
+      "confidence_by_layer": {
+        "layer_1_intent": 1.0,
+        "layer_2_retrieval": 1.0,
+        "layer_3_verification": 1.0
+      }
+    },
+    {
+      "ref": "C2",
+      "component_id": "CCR06CG103FS",
+      "component_type": "capacitor",
+      "footprint": "Capacitor_THT:C_Disc_D4.7mm_W2.5mm_P5.00mm",
+      "footprint_geometry_ref": "tscircuit_builtin:C_Disc",
+      "value": "0.01uF",
+      "manufacturer": "KEMET",
+      "datasheet_confidence": 1.0,
+      "justification": "Control voltage bypass capacitor",
+      "position": {
+        "x_mm": 155.9641,
+        "y_mm": 102.703,
+        "rotation_deg": 180.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "kicad_pcb",
+      "confidence_by_layer": {
+        "layer_1_intent": 1.0,
+        "layer_2_retrieval": 1.0,
+        "layer_3_verification": 1.0
+      }
+    },
+    {
+      "ref": "TP1",
+      "component_id": "TestPoint_Probe",
+      "component_type": "test_point",
+      "footprint": "Connector_PinHeader_2.00mm:PinHeader_1x01_P2.00mm_Vertical",
+      "footprint_geometry_ref": "tscircuit_builtin:PinHeader_1x01",
+      "value": "TestPoint_Probe",
+      "manufacturer": "Generic",
+      "datasheet_confidence": 1.0,
+      "justification": "Probe point for GND",
+      "position": {
+        "x_mm": 151.2011,
+        "y_mm": 108.2192,
+        "rotation_deg": 0.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "kicad_pcb"
+    },
+    {
+      "ref": "TP2",
+      "component_id": "TestPoint_Probe",
+      "component_type": "test_point",
+      "footprint": "Connector_PinHeader_2.00mm:PinHeader_1x01_P2.00mm_Vertical",
+      "footprint_geometry_ref": "tscircuit_builtin:PinHeader_1x01",
+      "value": "TestPoint_Probe",
+      "manufacturer": "Generic",
+      "datasheet_confidence": 1.0,
+      "justification": "Probe point for /POWER",
+      "position": {
+        "x_mm": 153.67,
+        "y_mm": 76.2,
+        "rotation_deg": 0.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "kicad_pcb"
+    },
+    {
+      "ref": "TP3",
+      "component_id": "TestPoint_Probe",
+      "component_type": "test_point",
+      "footprint": "Connector_PinHeader_2.00mm:PinHeader_1x01_P2.00mm_Vertical",
+      "footprint_geometry_ref": "tscircuit_builtin:PinHeader_1x01",
+      "value": "TestPoint_Probe",
+      "manufacturer": "Generic",
+      "datasheet_confidence": 1.0,
+      "justification": "Probe point for /RC WAVE",
+      "position": {
+        "x_mm": 121.92,
+        "y_mm": 93.98,
+        "rotation_deg": 0.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "kicad_pcb"
+    },
+    {
+      "ref": "TP4",
+      "component_id": "TestPoint_Probe",
+      "component_type": "test_point",
+      "footprint": "Connector_PinHeader_2.00mm:PinHeader_1x01_P2.00mm_Vertical",
+      "footprint_geometry_ref": "tscircuit_builtin:PinHeader_1x01",
+      "value": "TestPoint_Probe",
+      "manufacturer": "Generic",
+      "datasheet_confidence": 1.0,
+      "justification": "Probe point for /OUTPUT",
+      "position": {
+        "x_mm": 156.21,
+        "y_mm": 85.09,
+        "rotation_deg": 0.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "kicad_pcb"
+    },
+    {
+      "ref": "V1",
+      "component_id": "VPULSE",
+      "component_type": "simulation_source",
+      "footprint": null,
+      "footprint_geometry_ref": null,
+      "value": "VPULSE",
+      "pulse_v1": "0",
+      "pulse_v2": "5",
+      "pulse_td": "0",
+      "pulse_tr": "0.5m",
+      "pulse_tf": "0.5m",
+      "pulse_pw": "2m",
+      "pulse_per": "5m",
+      "manufacturer": "Simulation_SPICE",
+      "datasheet_confidence": 1.0,
+      "justification": "DNP, SPICE simulation voltage pulse source",
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned"
+    }
+  ],
+  "netlist": [
+    {
+      "net_name": "GND",
+      "net_type": "power",
+      "connections": [
+        {
+          "ref": "TP1",
+          "pin_name": "1",
+          "pin_number": "1"
+        },
+        {
+          "ref": "U1",
+          "pin_name": "GND",
+          "pin_number": "1"
+        },
+        {
+          "ref": "C1",
+          "pin_name": "2",
+          "pin_number": "2"
+        },
+        {
+          "ref": "C2",
+          "pin_name": "2",
+          "pin_number": "2"
+        },
+        {
+          "ref": "V1",
+          "pin_name": "2",
+          "pin_number": "2"
+        }
+      ],
+      "source_rule": "ground_plane",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 0
+    },
+    {
+      "net_name": "/RC WAVE",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "TP3",
+          "pin_name": "1",
+          "pin_number": "1"
+        },
+        {
+          "ref": "U1",
+          "pin_name": "~{TRIG}",
+          "pin_number": "2"
+        },
+        {
+          "ref": "U1",
+          "pin_name": "THRES",
+          "pin_number": "6"
+        },
+        {
+          "ref": "C1",
+          "pin_name": "1",
+          "pin_number": "1"
+        },
+        {
+          "ref": "R1",
+          "pin_name": "2",
+          "pin_number": "2"
+        },
+        {
+          "ref": "R2",
+          "pin_name": "2",
+          "pin_number": "2"
+        }
+      ],
+      "source_rule": "schematic_extraction",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "Net-(U1-CONT)",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "U1",
+          "pin_name": "CONT",
+          "pin_number": "5"
+        },
+        {
+          "ref": "C2",
+          "pin_name": "1",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "schematic_extraction",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "Net-(Q1-E)",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "Q1",
+          "pin_name": "E",
+          "pin_number": "1"
+        },
+        {
+          "ref": "R1",
+          "pin_name": "1",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "schematic_extraction",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "Net-(Q1-B)",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "Q1",
+          "pin_name": "B",
+          "pin_number": "2"
+        },
+        {
+          "ref": "R3",
+          "pin_name": "2",
+          "pin_number": "2"
+        }
+      ],
+      "source_rule": "schematic_extraction",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "/POWER",
+      "net_type": "power",
+      "connections": [
+        {
+          "ref": "Q1",
+          "pin_name": "C",
+          "pin_number": "3"
+        },
+        {
+          "ref": "U1",
+          "pin_name": "~{RESET}",
+          "pin_number": "4"
+        },
+        {
+          "ref": "U1",
+          "pin_name": "VDD",
+          "pin_number": "8"
+        },
+        {
+          "ref": "TP2",
+          "pin_name": "1",
+          "pin_number": "1"
+        },
+        {
+          "ref": "V1",
+          "pin_name": "1",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "schematic_extraction",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 1
+    },
+    {
+      "net_name": "Net-(U1-DISCH)",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "U1",
+          "pin_name": "DISCH",
+          "pin_number": "7"
+        },
+        {
+          "ref": "R2",
+          "pin_name": "1",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "schematic_extraction",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "/OUTPUT",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "U1",
+          "pin_name": "OUT",
+          "pin_number": "3"
+        },
+        {
+          "ref": "R3",
+          "pin_name": "1",
+          "pin_number": "1"
+        },
+        {
+          "ref": "TP4",
+          "pin_name": "1",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "schematic_extraction",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    }
+  ],
+  "_NEW_routing_priority_hierarchy": {
+    "tiers": [
+      {
+        "tier": 0,
+        "name": "ground_and_power_planes",
+        "nets": [
+          "GND"
+        ]
+      },
+      {
+        "tier": 1,
+        "name": "power_rails",
+        "nets": [
+          "/POWER"
+        ]
+      },
+      {
+        "tier": 2,
+        "name": "sensitive_analog_signals",
+        "nets": [
+          "/RC WAVE",
+          "Net-(U1-CONT)",
+          "Net-(Q1-E)",
+          "Net-(Q1-B)",
+          "Net-(U1-DISCH)",
+          "/OUTPUT"
+        ]
+      },
+      {
+        "tier": 3,
+        "name": "general_digital_io",
+        "nets": []
+      },
+      {
+        "tier": 4,
+        "name": "copper_pours_and_thermal",
+        "nets": []
+      }
+    ]
+  },
+  "placement_constraints": [],
+  "placement_rules_text": [],
+  "component_groups": [],
+  "routing_hints": [
+    {
+      "nets": [
+        "GND"
+      ],
+      "hint_type": "ground_plane",
+      "value": null,
+      "unit": "continuous",
+      "note": "Common ground domain."
+    }
+  ],
+  "_NEW_thermal_management": {
+    "thermal_vias_required": false,
+    "hot_components": [],
+    "thermal_relief_pads": [],
+    "note": "Through-hole components, no intense thermal requirements."
+  },
+  "board_spec": {
+    "layers": 2,
+    "material": "FR4",
+    "thickness_mm": 1.6,
+    "copper_weight_oz": 1.0,
+    "min_trace_width_mm": 0.2,
+    "min_clearance_mm": 0.2,
+    "min_via_drill_mm": 0.3,
+    "surface_finish": "HASL",
+    "_NEW_stackup_arrangement": "Signal-Signal",
+    "_NEW_prepreg_core_note": "Standard 2-layer FR4 construction.",
+    "_NEW_annular_ring_min_mm": 0.15
+  },
+  "performance_specs": {
+    "total_quiescent_current": {
+      "unit": "mA",
+      "value": null,
+      "note": "Dependent on the external /POWER supply."
+    },
+    "output_swing": {
+      "unit": "V",
+      "min": 0.0,
+      "max": 15.0,
+      "note": "Determined by VPULSE and the limits of the TLC555."
+    }
+  },
+  "topology_details": {
+    "type": "555_Timer_Feedback_Oscillator",
+    "description": "Astable-style oscillator/test circuit built around a TLC555. Features an NPN transistor (Q1) driven by the timer output to feed back into the RC timing network, creating a modified charging/discharging cycle.",
+    "servo_gain": null,
+    "output_compliance": "Rail-to-rail dependent on /POWER."
+  },
+  "bom": [],
+  "justifications": {
+    "U1": "Standard TLC555 CMOS timer for waveform generation.",
+    "Q1": "2N3904 NPN transistor for switching the feedback logic."
+  },
+  "source_citations": {
+    "U1": "555.kicad_sch[cite: 6]",
+    "Q1": "555.kicad_sch[cite: 6]",
+    "Board Parameters": "555.kicad_pcb[cite: 3], 555.pro[cite: 9]",
+    "Simulation Settings": "555.wbk[cite: 11]"
+  },
+  "review_flags": []
+}

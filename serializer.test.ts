@@ -337,3 +337,178 @@ describe("LM358 KiCad symbol integration", () => {
     expect(result.svg.length).toBeGreaterThan(500)
   })
 })
+
+// --------------------------------------------------------------------------- //
+// Net name sanitization for tscircuit JSX prop compatibility
+// --------------------------------------------------------------------------- //
+
+describe("net name sanitization for tscircuit JSX props", () => {
+  it("sanitizes disallowed characters but keeps parens-safe names stable", () => {
+    const { sanitizeNetNameForJsx } = require("./serializer/serializer")
+    expect(sanitizeNetNameForJsx("Net-(C324-Pad1)")).toBe("Net__C324_Pad1_")
+    expect(sanitizeNetNameForJsx("VIN")).toBe("VIN")
+    expect(sanitizeNetNameForJsx("VCC-3.3")).toBe("VCC_3_3")
+    expect(sanitizeNetNameForJsx("1A")).toBe("_1A")
+    expect(sanitizeNetNameForJsx("A B")).toBe("A_B")
+  })
+
+  it("serializes a v1.2 NIR whose net name contains - and parens without throwing", async () => {
+    setUseKicadSymbols(false)
+    const { serializeNirAsync } = require("./serializer/serializer")
+    const raw = require("./serializer/fixtures/layer2mockschema.nir.json")
+    const result = await serializeNirAsync(raw)
+    expect(result.circuitJson.length).toBeGreaterThan(0)
+
+    // source_net keeps the ORIGINAL NIR net name (sanitization is prop-only)
+    const nets = result.circuitJson.filter(
+      (el: any) => el.type === "source_net"
+    )
+    const names = nets.map((n: any) => n.name)
+    expect(names).toContain("Net-(C324-Pad1)")
+    expect(names).not.toContain("Net__C324_Pad1_")
+
+    // Traces reference nets by id, so connectivity is intact
+    const traces = result.circuitJson.filter(
+      (el: any) => el.type === "source_trace"
+    )
+    expect(traces.length).toBeGreaterThan(0)
+    for (const t of traces) {
+      expect(Array.isArray(t.connected_source_net_ids)).toBe(true)
+    }
+
+    // U301 footprint IC-PowerSSO-36-EPU is a 36-lead package; the netlist only
+    // references pin 24. The drawn box must carry the FULL 36 pins (not 24,
+    // the max netlist pin). Regression for the AmpOne 24-pin-box bug.
+    const u301 = portsForComponent(result.circuitJson, "U301")
+    expect(u301).toBe(36)
+    const c324 = portsForComponent(result.circuitJson, "C324")
+    expect(c324).toBe(2)
+    const r308 = portsForComponent(result.circuitJson, "R308")
+    expect(r308).toBe(2)
+  })
+})
+
+// Number of schematic_ports drawn for a component, looked up by NIR ref name.
+function portsForComponent(circuitJson: any[], name: string): number {
+  const src = circuitJson.find(
+    (e: any) =>
+      (e.type === "source_component" || e.type === "source_component_base") &&
+      e.name === name,
+  )
+  if (!src) return -1
+  const sch = circuitJson.find(
+    (e: any) =>
+      e.type === "schematic_component" &&
+      e.source_component_id === src.source_component_id,
+  )
+  if (!sch) return -1
+  return circuitJson.filter(
+    (e: any) =>
+      e.type === "schematic_port" &&
+      e.schematic_component_id === sch.schematic_component_id,
+  ).length
+}
+
+// --------------------------------------------------------------------------- //
+// Footprint-authoritative IC pin count
+// --------------------------------------------------------------------------- //
+
+function makeIcNir(footprint: string, pins: number[], componentType = "mcu"): any {
+  return {
+    schema_version: "1.1",
+    design_id: "test_ic_pin_count",
+    components: [
+      {
+        ref: "U1",
+        component_id: "c1",
+        component_type: componentType,
+        footprint,
+        value: "T",
+        position: { x_mm: 0, y_mm: 0, rotation_deg: 0 },
+      },
+    ],
+    netlist: pins.map((p, i) => ({
+      net_name: `net${i}`,
+      net_type: "analog",
+      connections: [{ ref: "U1", pin_name: `pin${p}`, pin_number: String(p) }],
+    })),
+    board_spec: { layers: 2, material: "FR4", thickness_mm: 1.6 },
+  }
+}
+
+describe("footprint-authoritative IC pin count", () => {
+  it("sync: draws the full footprint pin count even when the netlist only references one pin", () => {
+    setUseKicadSymbols(false)
+    // require() gives the sync nirToCircuitJson (the module export shadowed
+    // by the async variant in .d.ts — see known-issue #1).
+    const { nirToCircuitJson: sync } = require("./serializer/serializer")
+    // mcu has no standard symbol -> makeSymbolGeometry draws pinCount stubs.
+    // SOIC-8 implies 8 pins; netlist references only pin 2. The box must have
+    // 8 stubs (previously inferPinCount("SOIC-8") returned 2 -> only 2 stubs).
+    const cj = sync(makeIcNir("SOIC-8", [2]))
+    const stubs = cj.filter(
+      (e: any) => e.type === "schematic_line" && e.schematic_component_id === "U1_sch",
+    ).length
+    expect(stubs).toBe(8)
+  })
+
+  it("sync: hard-errors when the netlist references a pin above the footprint's pin count", () => {
+    setUseKicadSymbols(false)
+    const { nirToCircuitJson: sync } = require("./serializer/serializer")
+    expect(() => sync(makeIcNir("SOIC-8", [12]))).toThrow(
+      /references pin 12/,
+    )
+  })
+
+  it("async: unknown IC footprint renders a 2-pin box and warns loudly", async () => {
+    setUseKicadSymbols(false)
+    const { serializeNirAsync } = require("./serializer/serializer")
+    const warns: string[] = []
+    const origWarn = console.warn
+    console.warn = (...args: any[]) => {
+      warns.push(args.join(" "))
+    }
+    let result: any
+    try {
+      result = await serializeNirAsync(makeIcNir("WEIRD-PKG-ZZ", [1, 2]))
+    } finally {
+      console.warn = origWarn
+    }
+    expect(result.circuitJson.length).toBeGreaterThan(0)
+    expect(portsForComponent(result.circuitJson, "U1")).toBe(2)
+    expect(warns.some((w) => w.includes("Cannot determine pin count"))).toBe(true)
+  })
+
+  it("parsePinCountFromFootprint handles connector row×pins names without false-positives", () => {
+    const { parsePinCountFromFootprint } = require("./serializer/serializer")
+    // PinHeader-style footprints encode rows×pins and must parse (the previous
+    // "unknown footprint" warning for these was a parser gap, not a genuine
+    // unknown — resolving it instead of suppressing the warning).
+    expect(parsePinCountFromFootprint("Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical")).toBe(2)
+    expect(parsePinCountFromFootprint("PinHeader_1x08")).toBe(8)
+    expect(parsePinCountFromFootprint("PinHeader_2x03")).toBe(6)
+    // KiCad body dimensions like 3x3mm must NOT be read as 3×3=9 pins when no
+    // connector keyword is present.
+    expect(parsePinCountFromFootprint("kicad:Package_SO/SomePkg_3x3mm_P0.5mm")).toBeNull()
+    expect(parsePinCountFromFootprint("WEIRD-PKG-ZZ")).toBeNull()
+  })
+
+  it("parsePinCountFromFootprint treats THT package designators (TO-92) as package names, not pin counts", () => {
+    const { parsePinCountFromFootprint } = require("./serializer/serializer")
+    // TO-92 embeds "92" in the package designator; it is a 3-pin BJT, not 92 pins.
+    expect(parsePinCountFromFootprint("Package_TO_SOT_THT:TO-92_Inline")).toBe(3)
+    expect(parsePinCountFromFootprint("TO-92-3")).toBe(3)
+    // Sibling THT/SMD packages with embedded non-pin numbers.
+    expect(parsePinCountFromFootprint("TO-220")).toBe(3)
+    expect(parsePinCountFromFootprint("TO-220-5")).toBe(5)
+    expect(parsePinCountFromFootprint("TO-247-4")).toBe(4)
+    expect(parsePinCountFromFootprint("TO-263-5")).toBe(5)
+    expect(parsePinCountFromFootprint("SOT-223")).toBe(4)
+    expect(parsePinCountFromFootprint("SOT-89")).toBe(3)
+    expect(parsePinCountFromFootprint("SOT-23-6")).toBe(6)
+    // Pin-count package names must keep parsing as before.
+    expect(parsePinCountFromFootprint("SOIC-8")).toBe(8)
+    expect(parsePinCountFromFootprint("soic8")).toBe(8)
+    expect(parsePinCountFromFootprint("DIP-8_W7.62mm_LongPads")).toBe(8)
+  })
+})

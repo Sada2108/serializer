@@ -189,6 +189,135 @@ describe("netlistFromCircuitJson", () => {
     expect(result.warnings.some((w) => w.includes("NOT MODELED") || w.includes("not modeled"))).toBe(true)
   })
 
+  it("emits a SPICE PULSE source for simulation_source from v1.1 NIR pulse_* params", () => {
+    // V1 (simulation_source, VPULSE) drives a power rail that also feeds an IC
+    // power pin. A real V-element must be emitted — and the implicit-source
+    // heuristic must NOT add a duplicate source on the same net.
+    const circuitJson = [
+      { type: "source_component_base", name: "V1", component_type: "simulation_source", component_id: "VPULSE", footprint: "" },
+      { type: "source_net", name: "POWER", is_power: true, is_ground: false },
+      { type: "source_net", name: "GND", is_power: false, is_ground: true },
+      { type: "source_trace", connected_source_port_ids: ["V1_source_port_1"], connected_source_net_ids: ["net_POWER"] },
+      { type: "source_trace", connected_source_port_ids: ["V1_source_port_2"], connected_source_net_ids: ["net_GND"] },
+    ]
+    const nir = {
+      schema_version: "1.1",
+      components: [
+        {
+          ref: "V1",
+          component_type: "simulation_source",
+          footprint: "",
+          value: "VPULSE",
+          pulse_v1: "0",
+          pulse_v2: "5",
+          pulse_td: "0",
+          pulse_tr: "0.5m",
+          pulse_tf: "0.5m",
+          pulse_pw: "2m",
+          pulse_per: "5m",
+        },
+      ],
+      netlist: [
+        { net_name: "POWER", net_type: "power", connections: [{ ref: "U1", pin_name: "VDD", pin_number: "8" }] },
+      ],
+    }
+    const result = netlistFromCircuitJson(circuitJson, nir)
+    // PULSE(V1 V2 TD TR TF PW PER) with all seven params passed through verbatim
+    expect(result.netlist).toContain("V1 1 0 PULSE(0 5 0 0.5m 0.5m 2m 5m)")
+    // No 1-ohm placeholder for the source
+    expect(result.netlist).not.toContain("R1_placeholder")
+    // No duplicate implicit V-source on POWER (which feeds an IC VDD pin)
+    expect(result.netlist).not.toContain("V2 ")
+    expect(result.warnings.some((w) => w.includes("has no explicit voltage source"))).toBe(false)
+    expect(result.warnings.some((w) => w.includes("not modeled"))).toBe(false)
+  })
+
+  it("emits DC (pulse initial level) for simulation_source in OP analysis", () => {
+    const circuitJson = [
+      { type: "source_component_base", name: "V1", component_type: "simulation_source", component_id: "VPULSE", footprint: "" },
+      { type: "source_net", name: "POWER", is_power: true, is_ground: false },
+      { type: "source_net", name: "GND", is_power: false, is_ground: true },
+      { type: "source_trace", connected_source_port_ids: ["V1_source_port_1"], connected_source_net_ids: ["net_POWER"] },
+      { type: "source_trace", connected_source_port_ids: ["V1_source_port_2"], connected_source_net_ids: ["net_GND"] },
+    ]
+    const nir = {
+      schema_version: "1.1",
+      components: [
+        { ref: "V1", component_type: "simulation_source", footprint: "", value: "VPULSE", pulse_v1: "0", pulse_v2: "5" },
+      ],
+      netlist: [],
+    }
+    const result = netlistFromCircuitJson(circuitJson, nir, { analysisType: "op" })
+    expect(result.netlist).toContain("V1 1 0 DC 0")
+  })
+
+  it("warns and falls back to SPICE defaults when simulation_source lacks pulse params", () => {
+    const circuitJson = [
+      { type: "source_component_base", name: "V1", component_type: "simulation_source", component_id: "VPULSE", footprint: "" },
+      { type: "source_net", name: "POWER", is_power: true, is_ground: false },
+      { type: "source_net", name: "GND", is_power: false, is_ground: true },
+      { type: "source_trace", connected_source_port_ids: ["V1_source_port_1"], connected_source_net_ids: ["net_POWER"] },
+      { type: "source_trace", connected_source_port_ids: ["V1_source_port_2"], connected_source_net_ids: ["net_GND"] },
+    ]
+    const nir = {
+      schema_version: "1.1",
+      components: [
+        { ref: "V1", component_type: "simulation_source", footprint: "", value: "VPULSE", pulse_v2: "5" },
+      ],
+      netlist: [],
+    }
+    const result = netlistFromCircuitJson(circuitJson, nir)
+    // Only pulse_v2 provided -> TR/TF fall back to the tran analysis timestep
+    // (1m) and PW/PER to the analysis duration (10m) — never a silent 0.
+    expect(result.netlist).toContain("V1 1 0 PULSE(0 5 0 1m 1m 10m 10m)")
+    expect(result.netlist).not.toContain("PULSE(0 5 0 0 0 0 0)")
+    expect(result.warnings.some((w) => w.includes("missing pulse_per"))).toBe(true)
+    // Hard fallback for timeStep/duration (not passed in opts) is warned about
+    expect(result.warnings.some((w) => w.includes("no analysis timeStep in opts"))).toBe(true)
+    expect(result.warnings.some((w) => w.includes("no analysis duration in opts"))).toBe(true)
+  })
+
+  it("uses opts timeStep/duration for simulation_source TR/TF/PW/PER fallbacks", () => {
+    const circuitJson = [
+      { type: "source_component_base", name: "V1", component_type: "simulation_source", component_id: "VPULSE", footprint: "" },
+      { type: "source_net", name: "POWER", is_power: true, is_ground: false },
+      { type: "source_net", name: "GND", is_power: false, is_ground: true },
+      { type: "source_trace", connected_source_port_ids: ["V1_source_port_1"], connected_source_net_ids: ["net_POWER"] },
+      { type: "source_trace", connected_source_port_ids: ["V1_source_port_2"], connected_source_net_ids: ["net_GND"] },
+    ]
+    const nir = {
+      schema_version: "1.1",
+      components: [
+        { ref: "V1", component_type: "simulation_source", footprint: "", value: "VPULSE", pulse_v2: "5" },
+      ],
+      netlist: [],
+    }
+    const result = netlistFromCircuitJson(circuitJson, nir, { analysisType: "tran", timeStep: "100u", duration: "20m" })
+    expect(result.netlist).toContain("V1 1 0 PULSE(0 5 0 100u 100u 20m 20m)")
+    // timeStep/duration were provided, so no hard-fallback warnings
+    expect(result.warnings.some((w) => w.includes("no analysis timeStep in opts"))).toBe(false)
+    expect(result.warnings.some((w) => w.includes("no analysis duration in opts"))).toBe(false)
+  })
+
+  it("uses the fft analysis timestep default (10u) for simulation_source TR/TF fallbacks", () => {
+    const circuitJson = [
+      { type: "source_component_base", name: "V1", component_type: "simulation_source", component_id: "VPULSE", footprint: "" },
+      { type: "source_net", name: "POWER", is_power: true, is_ground: false },
+      { type: "source_net", name: "GND", is_power: false, is_ground: true },
+      { type: "source_trace", connected_source_port_ids: ["V1_source_port_1"], connected_source_net_ids: ["net_POWER"] },
+      { type: "source_trace", connected_source_port_ids: ["V1_source_port_2"], connected_source_net_ids: ["net_GND"] },
+    ]
+    const nir = {
+      schema_version: "1.1",
+      components: [
+        { ref: "V1", component_type: "simulation_source", footprint: "", value: "VPULSE", pulse_v2: "5" },
+      ],
+      netlist: [],
+    }
+    const result = netlistFromCircuitJson(circuitJson, nir, { analysisType: "fft" })
+    expect(result.netlist).toContain("V1 1 0 PULSE(0 5 0 10u 10u 10m 10m)")
+  })
+
   it("handles voltage sources from v0.1 NIR", () => {
     const circuitJson = [
       { type: "source_component_base", name: "V1", component_type: "voltage_source", voltage: "5" },

@@ -485,7 +485,7 @@ Epsilon clamping: values below `1e-12` snap to zero (hides IEEE-754 solver noise
 
 ### 4.3 Dev Tools
 
-#### `dev-tools/render_interactive_simulator.ts` (418 lines)
+#### `dev-tools/render_interactive_simulator.ts` (440 lines)
 **Purpose:** CLI tool generating self-contained interactive HTML pages per fixture+analysis.
 
 **Usage:** `bun run render_interactive_simulator.ts [fixture_name] [analysisType]`
@@ -497,22 +497,37 @@ Epsilon clamping: values below `1e-12` snap to zero (hides IEEE-754 solver noise
 4. Parse .raw via `parseRawFile()` or Fourier via `parseFourierOutput()`
 5. Read `interactive_simulator.html` template, replace `{{PLACEHOLDER}}` tokens
 
-**AC analysis:** Computes magnitude (dB) and phase (deg) from complex vectors.
-**FFT analysis:** Uses `parseFourierOutput()` on log, generates bar-chart probe.
+**AC analysis:** Computes magnitude (dB) and phase (deg) from complex vectors; the AC sweep variable (`frequency`) is excluded from the Y-probe list to avoid a frequency-vs-itself trace. X (frequency, Hz) is unscaled on the chart axis.
+**FFT analysis:** Uses `parseFourierOutput()` on log, generates a single "Harmonic Magnitude" probe (harmonic magnitude vs. frequency in Hz, x already converted to display units). uPlot renders it as a **connected line** — a deliberate product decision (user opted to keep the line, not switch to a stem/bar plot).
+**X-axis units:** Time-domain analyses (TRAN/OP/FFT) scale ngspice seconds → ms (×1000); AC frequency (Hz) and DC sweep (V) pass through unscaled. The rule lives in `dev-tools/axisScale.ts` and is shared by both the static driver and `sim_server.ts` so the two paths agree.
 **Analysis file map:** `buildAnalysisFileMap()` resolves cross-fixture navigation (e.g., `rc_lowpass_001`'s AC analysis → `rc_lowpass_ac_001_ac_interactive.html`).
 
 ---
 
 #### `dev-tools/interactive_simulator.html` — HTML template
-**18 placeholder tokens:** `{{DESIGN_ID}}`, `{{SCHEMATIC_FILE}}`, `{{WARN_BANNER}}`, `{{PROBES_JSON}}`, `{{TIME_JSON}}`, `{{X_AXIS_LABEL}}`, `{{NETLIST}}`, `{{T_START_MS}}`, `{{T_END_MS}}`, `{{ANALYSIS_TYPE}}`, `{{TRAN_SELECTED}}`, `{{OP_SELECTED}}`, `{{DC_SELECTED}}`, `{{AC_SELECTED}}`, `{{FFT_SELECTED}}`, `{{COMPONENTS_JSON}}`, `{{ANALYSIS_FILE_MAP}}`
+**18 placeholder tokens:** `{{DESIGN_ID}}`, `{{SCHEMATIC_FILE}}`, `{{SCALE_MODE_JS}}`, `{{WARN_BANNER}}`, `{{PROBES_JSON}}`, `{{TIME_JSON}}`, `{{X_AXIS_LABEL}}`, `{{NETLIST}}`, `{{T_START_MS}}`, `{{T_END_MS}}`, `{{ANALYSIS_TYPE}}`, `{{TRAN_SELECTED}}`, `{{OP_SELECTED}}`, `{{DC_SELECTED}}`, `{{AC_SELECTED}}`, `{{FFT_SELECTED}}`, `{{COMPONENTS_JSON}}`, `{{ANALYSIS_FILE_MAP}}`
 
-**UI:** Plotly.js chart, analysis dropdown (TRAN/OP/DC/AC/FFT; PZ/NOISE/SP disabled), signal table, collapsible netlist, dynamic sliders (250ms debounce, log-scale for R/C/L), back-to-schematic link.
+**UI:** Chart is **uPlot (v1.6.31, canvas-based)** loaded from the unpkg/jsdelivr CDN (`uPlot.iife.min.js` + `uPlot.min.css`). Analysis dropdown (TRAN/OP/DC/AC/FFT; PZ/NOISE/SP disabled with `title` tooltips explaining why), a four-option **scale-mode dropdown** (Linear / Log Y / Log X / Log-Log) wired to `scaleMode.js` (injected via `{{SCALE_MODE_JS}}`), signal table, collapsible netlist, dynamic sliders (250ms debounce, log-scale for R/C/L), TRAN-only Start/End/Step time-range controls, back-to-schematic link. **Build marker** in the meta tag + console.info: `zoom-yrefit-wheelfix-opbanner-grab-2026-08-09` (always check this when diagnosing a stale/mismatched build — remote/Docker deploys run the committed template and won't have recent uncommitted fixes). A `#simOverlay` pending indicator covers the chart while any simulation request is in flight (in-flight count tracked by `setPending`); `#chartRoot` is the uPlot mount point (uPlot wipes the element it mounts into), with the overlay kept as a sibling. `#uiNote` shows transient errors (e.g. a failed analysis switch).
+
+**Pan / wheel-zoom plugins:** uPlot 1.6.31 has no native pan or wheel zoom (only drag-select), so both are custom plugins (`makePanPlugin`, `wheelZoomPlugin`). `cursor.drag: false` disables native drag-select; **left-drag (any button) pans** via `posToVal` (works on linear AND log axes), with a `grab`/`grabbing` cursor affordance set in the plugin's `ready` hook and on mousedown/mouseup. Wheel zoom scales x AND y about the cursor through `zoomRangeAbout` (decade-space math on log axes). **Known fix:** `zoomRangeAbout` returns a bare `[min, max]` array; passing it directly to `u.setScale("x", array)` silently reset the scale to full auto-range (wheel zoom appeared dead) — it is now wrapped in `{min, max}`. The `setScale` hook clamps any zoomed span to ≥ `MIN_SPAN_FRAC` (0.01 = 1%) of the full auto-span (`clampScaleFromHook`).
+
+**Zoom / pan / fit toolbar (`zoomChart`/`panChart`):** `+`/`-` buttons zoom the x axis about its midpoint by ×0.8 / ×1.25, clamped at the 1% min-span floor and capped at the full range (zoom out far enough = Fit). **Regression fix:** after every x zoom (and on the zoom-out-to-Fit path) `zoomChart` re-runs the y auto-range with `u.setScale("y", {min:null, max:null})`, guaranteeing every checked series stays visible in the new x window — the y scale remains `auto`, so later pans/zooms keep re-ranging it. `panChart(±0.15)` shifts the x window and clamps it inside the data domain. `dblclick` performs a full Fit via a real listener in `onChartReady` (uPlot's internal dblclick only auto-scales X and never fires the `dblclick` hook for a lone chart).
+
+**Scale-mode logic:** `dev-tools/scaleMode.js` (UMD, plain JS so the same file is inlined into the page via `{{SCALE_MODE_JS}}` AND imported by `bun test`) exports `SCALE_MODES`, `SCALE_OPTIONS`, `defaultScaleFor`, `scaleConfigFor`, `hasNonPositive`, `smallestPositive`, `restrictedScaleOptions`, `applyScaleMode` (mutates `u.scales.x.distr` / `u.scales.y.distr` + re-ranges via `setData`). Defaults: AC → `logX`, all others → `linear`. Gating: AC always disables Log Y / Log-Log (data already in dB); Log Y / Log-Log disabled when any Y ≤ 0; **Log X / Log-Log on a t=0 origin (TRAN) stays ENABLED** — `applyScaleMode(u, mode, xValues)` floors `scales.x.min` to the smallest strictly-positive x so the t=0 sample is clamped to the log axis left edge instead of dropping the curve; Log X is disabled only when there is NO positive x at all; unusable active mode falls back to `linear`. The floor is applied at render, on every live update, and on scale-mode change (x passed as `u.data[0]`). 21 unit tests in `dev-tools/scaleMode.test.ts` (no DOM).
+
+**Time-range / time-step:** Start/End/Step inputs are TRAN-only (hidden for AC/DC/FFT and cleared on switch so no stale value leaks into ngspice). They are auto-populated in **display ms** from the data range (`populateTimeRange`), and **converted ms → SPICE seconds** (`msToSpiceSec`) before being sent as `duration`/`timeStep` in the POST body — a raw ms number forwarded as-is would be read as seconds (a 10 ms End became a 10 s simulation). `sim_server.ts` forwards both to `netlistFromCircuitJson` only for `isTimeDomainX` analyses (TRAN-only). Start is display-only (the netlist generator has no `.tran` tstart support and `simulator/*.ts` is off-limits).
+
+**X-axis unit conversion** (`dev-tools/axisScale.ts`): single `toDisplayX(analysisType, rawX)` rule shared by `render_interactive_simulator.ts` and `sim_server.ts` — time-domain analyses (TRAN/OP/FFT) get ngspice seconds → ms (×1000); AC frequency (Hz) and DC sweep voltage (V) pass through unscaled. 9 unit tests in `dev-tools/axisScale.test.ts` (incl. AC ×1000 regression).
+
+**Live-update path (`updateChartData` vs `renderChart`):** A single uPlot instance is created at page load and reused for all live slider/time-range re-simulations. `updateChartData(x, probes)` calls `chart.setData(st.data)` on the SAME instance (never rebuilt) as long as the probe count matches; it only calls `fitChart` when the sweep itself changed (Start/End/Step or a new x extent). Component-value tweaks that keep the x sweep identical therefore preserve the current view, and uPlot re-ranges the auto scales for the new data. The `+`/`-` buttons work identically after either path because `zoomChart`'s y-refit is unconditional. (Verified: this path leaves no stale scale state — see Known Issue #13 for the one unreproduced report.)
+
+**OP analysis:** renders a value table, no chart/axes. `refreshScaleOptions` short-circuits for `analysisType === "op"` — it disables the scale-mode dropdown and hides the `#scaleWarn` banner instead of showing stale "Log Y disabled / Log X floored" warnings for a chart that does not exist.
 
 **Slider server dependency:** `sim_server.ts` at `localhost:3777`.
 
 ---
 
-#### `dev-tools/sim_server.ts` (345 lines)
+#### `dev-tools/sim_server.ts` (618 lines)
 **Purpose:** Bun.serve() HTTP server for live re-simulation with component value overrides.
 
 **Port:** 3777
@@ -570,7 +585,7 @@ Epsilon clamping: values below `1e-12` snap to zero (hides IEEE-754 solver noise
 - **Drag to reposition:** Drag component → layout override stored, applied via SVG transform
 - **Snap-to-wire:** Dragging near wire endpoints snaps pin to wire, updates trace path `d` attributes
 - **Power symbols:** GND rendered as filled triangle, power nets as arrow labels
-- **Simulator link:** "Open Simulator" button opens Plotly viewer with `?R1=2.2k` URL params for auto-applied values
+- **Simulator link:** "Open Simulator" button opens the uPlot interactive simulator viewer with `?R1=2.2k` URL params for auto-applied values
 - **Undo/Redo:** Ctrl+Z / Ctrl+Shift+Z for layout and value changes
 - **Export:** Download modified NIR JSON or Circuit JSON
 - **Status bar:** Shows connection count and drag/snap status
@@ -621,7 +636,10 @@ Route shape, invalid input, 45°-corner chamfer verification, same-layer crossin
 #### `formatNumbers.test.ts` (33 tests)
 `formatEng`, `formatFixed`, `formatAuto`, `formatVector`, `formatSimulationResult`, `formatValue`, epsilon clamping.
 
-**Total: 103 tests, 0 failures** (as of latest run).
+#### `dev-tools/scaleMatrix.test.ts` (360 lines, headless-Chrome regression matrix)
+20-combination chart matrix (5 analyses × 4 scale modes). Each combo is loaded in a headless Chrome via CDP against a spawned `sim_server`, the scale mode is applied through the UI dropdown, and the resulting uPlot chart is asserted DRAWN (non-blank canvas) with finite auto-ranged x/y scales and the expected linear/log distr; gated combos must come back as disabled dropdown options. OP is asserted separately (value table, no chart). This is the regression guard behind the blank-Log-Y/X/log-log chart fixes, the OP chart (post-hoc `redraw()` clobbered construction-time x auto-range), tick labels, and the hover tooltip. Skips when ngspice or Chrome for Testing is missing.
+
+**Total: 146 tests, 0 failures** (4432–4447 expect() calls, 9 files) — as of the 2026-08-09 run. `simulator.test.ts` SKIPs its ngspice-dependent cases on this machine (no ngspice binary); `scaleMatrix.test.ts` runs 11 enabled DRAWN + 6 gated-off combos.
 
 ---
 
@@ -750,6 +768,8 @@ Earlier opamp-era baseline (pre-migration, from CONTEXT history): 0 errors, 0 un
 
 12. **Deferred schema v1.2 items:** `custom_symbols_required` / `hierarchical_sheets` root keys, plus `lookupSymbol`/`lookupKicadSymbol`/`makeSymbolGeometry` and `SEMANTIC_TO_PASSIVE`/`PIN_NAME_FIXUP`/`inferPinCount` rework — deferred until `custom_symbols_required` exists. `_NEW_*` fields are advisory pass-through only.
 
+13. **Open QA item — "zoom-in collapses the chart" (not reproducible locally):** A user report described AC: move a component slider (e.g. R1 → 5.6k, triggering the live `POST /simulate` → `updateChartData` path), then click `+`, and the Y axis collapses to a −5..−70 window with 2 of 3 traces gone. Reproduced EXACTLY this sequence on both the current code and the pre-fix `zoomChart` (x-only, no y-refit): every variant keeps all 3 traces visible (y re-ranges −95..−96 → 0, 0 clipped), including 5 consecutive `+` clicks after the slider. The one mechanism that WOULD explain the screenshot is a y scale pinned to a stale explicit `{min,max}` from a prior drag-select — but drag-select is disabled (`cursor.drag:false`), and `zoomChart` now force-refits y anyway. Working hypothesis is a stale build (remote/Docker/Railway serves the committed template without the session fixes) or a cached tab. Awaiting the user's literal broken-state screenshot + page URL/browser before closing. **Diagnostic:** check the `<meta name="sim-viewer-build">` value in the served page — anything older than `zoom-yrefit-wheelfix-opbanner-grab-2026-08-09` predates these fixes.
+
 ---
 
 ## 10. Fixture Catalog
@@ -766,6 +786,9 @@ Earlier opamp-era baseline (pre-migration, from CONTEXT history): 0 errors, 0 un
 | `lm358_noninv_001` | v1.1 | LM358 + passives | — | Non-inverting op-amp |
 | `idk.nir.json` | v1.2 | ULP instrumentation amp | — | AutoZero InAmp w/ digital gain |
 | `new schema.nir.json` | v1.2 | ULP instrumentation amp (`ulp_` prefix) | — | AutoZero_InAmp_with_Digital_Gain_Control |
+| `555_timer.nir.json` | v1.2 | timer_ic + NPN BJT + 3×R + 2×C + test points + sim source | — | 555 timer oscillator |
+| `audio_amplifier_1386.nir.json` | v1.2 | amplifier + 2×C + 2×R | — | Audio amplifier (LM386-family, minimal) |
+| `audioamplifier_lm386.nir.json` | v1.2 | instrumentation_amp + voltage_ref + LDO + digipot + 4×R + 5×C + TVS + ferrite bead (4-layer) | — | Audio amplifier (LM386, full) |
 
 ---
 
@@ -808,8 +831,8 @@ Earlier opamp-era baseline (pre-migration, from CONTEXT history): 0 errors, 0 un
 - Functions documented via JSDoc-style headers (file-level purpose, not per-function)
 
 ### Testing
-- 103 tests across 6 files
-- Tests skip gracefully when ngspice is unavailable
+- 146 tests across 9 files
+- Tests skip gracefully when ngspice is unavailable (simulator/ngspice cases; `scaleMatrix` skips without Chrome)
 - DRC validation is manual (run `kicad-cli pcb drc`)
 - No CI/CD configured
 
@@ -818,6 +841,7 @@ Earlier opamp-era baseline (pre-migration, from CONTEXT history): 0 errors, 0 un
 ## 13. Git History (chronological)
 
 ```
+a5a4a7d  the newest update
 03d9f9e  Add Layer 3 serializer: NIR → Circuit JSON → SVG schematic
 ecd1116  Rename open_forge folder to serializer
 eb732c0  Remove non-serializer files from tracking
@@ -854,6 +878,16 @@ All work after `339a27d` (uncommitted) is Sada's continuing work — including t
 - `serializer/fixtures/rc_lowpass_001.nir.json` — added `thickness_mm: 1.6` to `board_spec` (pre-existing strict-sync-path gap; async path unaffected).
 - **Deferred:** `custom_symbols_required` / `hierarchical_sheets` root keys, `lookupSymbol`/`lookupKicadSymbol`/`makeSymbolGeometry`, `SEMANTIC_TO_PASSIVE`/`PIN_NAME_FIXUP`/`inferPinCount`, Unicode value normalization.
 
+### Interactive simulator QA pass (2026-08-09) — 4-item regression task
+- `dev-tools/interactive_simulator.html` (now 1324 lines) — build marker `zoom-yrefit-wheelfix-opbanner-grab-2026-08-09`. Four fixes/decisions:
+  1. **Zoom-in regression:** NOT reproducible via any documented sequence (fresh load, slider-driven `updateChartData` at R1=5.6k, pre-fix and post-fix code). Still hardened the `+`/`-` path: `zoomChart` now unconditionally re-fits Y (`setScale("y",{min:null,max:null})`) after every x zoom so all checked series stay visible.
+  2. **FFT viz:** user chose to **keep the connected line** (no stem/bar switch) — no code change.
+  3. **OP stale banner:** `refreshScaleOptions` short-circuits on `atype === "op"` — banner hidden, dropdown disabled (previously showed stale "Log X floored / Log Y disabled" warnings for a chart that doesn't exist). Verified live.
+  4. **Pan cursor affordance:** `makePanPlugin` sets `grab` (idle) / `grabbing` (during drag) / `grab` (after mouseup). Verified live.
+- **Wheel-zoom root cause (real bug):** `wheelZoomPlugin` called `u.setScale("x", zoomRangeAbout(...))` with a bare `[min,max]` array while uPlot requires `{min,max}` — wheel zoom silently reset to full auto-range. Wrapped as `{min,max}`; wheel zoom now actually zooms (verified live + in the `scaleMatrix` harness).
+- `dev-tools/current_sim.html` regenerated after each template edit (contains the new build marker; used for `file://` probes).
+- Full suite green at each checkpoint: **146 pass / 0 fail**.
+
 ### Earlier uncommitted work (still present)
 - `serializer/serializer.ts` — KiCad output pipeline, exported internals
 - `serializer/fixtures/index.ts` — 4 new fixtures, `ac_magnitude` field
@@ -866,22 +900,27 @@ All work after `339a27d` (uncommitted) is Sada's continuing work — including t
 - `serializer/kicadPcbWriter.ts` (640 lines) — KiCad 10 format writer
 - `serializer/pcbRouting.ts` (651 lines) — Routing utilities
 - `serializer/router.ts` (268 lines) — Manhattan autorouter wrapper
-- `dev-tools/render_interactive_simulator.ts` (418 lines) — Interactive viewer generator
+- `dev-tools/render_interactive_simulator.ts` (440 lines) — Interactive uPlot viewer generator
 - `dev-tools/render_interactive_schematic.ts` (~120 lines) — Schematic editor generator
+- `dev-tools/interactive_simulator.html` (1324 lines) — Simulator HTML template (uPlot 1.6.31)
 - `dev-tools/interactive_schematic.html` (~580 lines) — Schematic editor HTML template
 - `dev-tools/circuitJsTranslator.ts` (209 lines) — CircuitJS translator
-- `dev-tools/sim_server.ts` (345 lines) — Live simulation server
+- `dev-tools/sim_server.ts` (618 lines) — Live simulation server (uPlot page builder)
+- `dev-tools/scaleMode.js` (186 lines) — Shared scale-mode UMD module (Linear/Log Y/Log X/Log-Log) with t=0 log-x floor, inlined into the viewer via `{{SCALE_MODE_JS}}`
+- `dev-tools/axisScale.ts` (23 lines) — Shared x-axis s→ms / Hz passthrough rule (used by driver + sim_server)
+- `dev-tools/scaleMatrix.test.ts` (360 lines) — 20-combo headless-Chrome chart regression matrix
+- `dev-tools/current_sim.html` — Regenerated "current" AC viewer (contains the live build marker)
 - `simulator/formatNumbers.ts` (132 lines) — SI prefix formatting
 - `simulator/parseFourierOutput.ts` (83 lines) — Fourier log parser
 - `simulator/printSimulationResult.ts` (60 lines) — Console printer
 - `serializer/kicadSymbolLibrary.ts`, `serializer/kicadSymbolParser.ts`, `serializer/kicadSymbolToCircuitJson.ts` — KiCad symbol path
-- 4 new NIR fixture JSON files
+- 3 new untracked v1.2 NIR fixture JSON files (`555_timer`, `audio_amplifier_1386`, `audioamplifier_lm386`)
 - 5 test files (927 lines total)
 - 13 generated HTML viewer pages
 - 5 generated schematic editor HTML pages
 
 ### Test status
-**103 pass, 0 fail** across 6 test files (4310 expect() calls).
+**146 pass, 0 fail** across 9 test files (4432–4447 expect() calls, varies slightly run-to-run). Includes 21 scale-mode tests (`scaleMode.test.ts`, no DOM — gating matrix incl. TRAN t=0 Log X floor, `smallestPositive`, `applyScaleMode` min-floor), 9 shared-axis-scale tests (`axisScale.test.ts`, no DOM — incl. the AC ×1000 regression), and the 20-combo headless-Chrome chart matrix (`scaleMatrix.test.ts`). `simulator.test.ts` SKIPs its ngspice cases on this machine (ngspice binary path is a Windows path); `scaleMatrix.test.ts` runs 11 enabled DRAWN + 6 gated-off combos.
 
 ### DRC status
 **rc_lowpass:** 0 violations, 0 unconnected — clean. **opamp:** ~175 autorouter-quality violations (stochastic, 253 earlier baseline) — pre-existing, not migration-related.

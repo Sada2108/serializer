@@ -1,0 +1,298 @@
+{
+  "schema_version": "1.2",
+  "design_id": "AudioAmp1386-1.0",
+  "prompt": null,
+  "design_methodology": null,
+  "created_at": "2017-02-14",
+  "pipeline_version": "1.2",
+  "topology": "Audio Amplifier Module",
+  "_NEW_board_class": {
+    "layer_class": "multi_layer",
+    "rigidity_class": "rigid",
+    "signal_domain_class": "mixed_signal",
+    "functional_domain_class": "audio_amplifier",
+    "material_class": "FR4_standard",
+    "volume_class": "prototype_low_volume",
+    "confidence": 1.0,
+    "source": "derived_from_topology_and_board_spec"
+  },
+  "_NEW_power_tree": {
+    "input_source": {
+      "type": "dc_power_supply",
+      "voltage_min_v": 12.0,
+      "voltage_max_v": 36.0,
+      "typical_capacity_mah": null
+    },
+    "rails": [],
+    "power_budget_table": null,
+    "total_budget_ua": null,
+    "total_estimated_ua": null,
+    "margin_ua": null,
+    "regulator_topology_note": null
+  },
+  "components": [
+    {
+      "ref": "U1",
+      "component_id": "1386",
+      "component_type": "amplifier",
+      "footprint": "IC-PowerSSO-36-EPU",
+      "footprint_geometry_ref": "MyKiCadLibs-Footprints:IC-PowerSSO-36-EPU",
+      "value": "1386",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "position": {
+        "x_mm": 137.0,
+        "y_mm": 111.0,
+        "rotation_deg": 90.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "layout_file",
+      "confidence_by_layer": null,
+      "_NEW_courtyard_mm": null,
+      "_NEW_thermal_relief_required": false
+    },
+    {
+      "ref": "C1",
+      "component_id": "generic_ceramic",
+      "component_type": "capacitor",
+      "footprint": "SMD-0805",
+      "footprint_geometry_ref": "MyKiCadLibs-Footprints:SMD-0805",
+      "value": "100n",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "position": {
+        "x_mm": 125.0,
+        "y_mm": 115.0,
+        "rotation_deg": 90.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "layout_file",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "C2",
+      "component_id": "generic_ceramic",
+      "component_type": "capacitor",
+      "footprint": "SMD-0805",
+      "footprint_geometry_ref": "MyKiCadLibs-Footprints:SMD-0805",
+      "value": "100n",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "position": {
+        "x_mm": 150.0,
+        "y_mm": 111.0,
+        "rotation_deg": 90.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "layout_file",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "R1",
+      "component_id": "generic_thin_film",
+      "component_type": "resistor",
+      "footprint": "SMD-0805",
+      "footprint_geometry_ref": "MyKiCadLibs-Footprints:SMD-0805",
+      "value": "10k",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "position": {
+        "x_mm": 121.0,
+        "y_mm": 115.0,
+        "rotation_deg": 180.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "layout_file",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "R2",
+      "component_id": "generic_thin_film",
+      "component_type": "resistor",
+      "footprint": "SMD-0805",
+      "footprint_geometry_ref": "MyKiCadLibs-Footprints:SMD-0805",
+      "value": "4.7",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "position": {
+        "x_mm": 150.0,
+        "y_mm": 121.0,
+        "rotation_deg": 180.0
+      },
+      "position_confidence": 1.0,
+      "position_source": "layout_file",
+      "confidence_by_layer": null
+    }
+  ],
+  "netlist": [
+    {
+      "net_name": "VCC",
+      "net_type": "power",
+      "connections": [
+        {
+          "ref": "U1",
+          "pin_name": "2",
+          "pin_number": "2"
+        },
+        {
+          "ref": "C2",
+          "pin_name": "1",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "schematic_netlist",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "GND",
+      "net_type": "ground",
+      "connections": [
+        {
+          "ref": "U1",
+          "pin_name": "4",
+          "pin_number": "4"
+        },
+        {
+          "ref": "C1",
+          "pin_name": "2",
+          "pin_number": "2"
+        },
+        {
+          "ref": "C2",
+          "pin_name": "2",
+          "pin_number": "2"
+        },
+        {
+          "ref": "R2",
+          "pin_name": "2",
+          "pin_number": "2"
+        }
+      ],
+      "source_rule": "schematic_netlist",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "Net-(C1-Pad1)",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "U1",
+          "pin_name": "3",
+          "pin_number": "3"
+        },
+        {
+          "ref": "C1",
+          "pin_name": "1",
+          "pin_number": "1"
+        },
+        {
+          "ref": "R1",
+          "pin_name": "1",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "schematic_netlist",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "Net-(U1-OUT)",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "U1",
+          "pin_name": "5",
+          "pin_number": "5"
+        },
+        {
+          "ref": "R2",
+          "pin_name": "1",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "schematic_netlist",
+      "net_confidence": 1.0,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    }
+  ],
+  "_NEW_routing_priority_hierarchy": {
+    "tiers": [
+      {
+        "tier": 0,
+        "name": "Default",
+        "nets": []
+      },
+      {
+        "tier": 1,
+        "name": "89Ohm",
+        "nets": []
+      }
+    ]
+  },
+  "placement_constraints": [],
+  "placement_rules_text": null,
+  "component_groups": [],
+  "routing_hints": [],
+  "_NEW_thermal_management": {
+    "thermal_vias_required": false,
+    "hot_components": [],
+    "thermal_relief_pads": [],
+    "note": null
+  },
+  "board_spec": {
+    "layers": 2,
+    "material": "FR4",
+    "thickness_mm": 1.6,
+    "copper_weight_oz": 1.0,
+    "min_trace_width_mm": 0.127,
+    "min_clearance_mm": 0.15,
+    "min_via_drill_mm": 0.3,
+    "surface_finish": "ENIG",
+    "_NEW_stackup_arrangement": "Signal-Signal",
+    "_NEW_prepreg_core_note": "Standard 2-layer core construction",
+    "_NEW_annular_ring_min_mm": 0.1
+  },
+  "performance_specs": null,
+  "topology_details": {
+    "type": "Audio Amplifier Module",
+    "description": null,
+    "servo_gain": null,
+    "output_compliance": null
+  },
+  "bom": [
+    {
+      "ref": "U1",
+      "value": "1386",
+      "footprint": "IC-PowerSSO-36-EPU"
+    },
+    {
+      "ref": "C1",
+      "value": "100n",
+      "footprint": "SMD-0805"
+    },
+    {
+      "ref": "C2",
+      "value": "100n",
+      "footprint": "SMD-0805"
+    },
+    {
+      "ref": "R1",
+      "value": "10k",
+      "footprint": "SMD-0805"
+    },
+    {
+      "ref": "R2",
+      "value": "4.7",
+      "footprint": "SMD-0805"
+    }
+  ],
+  "justifications": null,
+  "source_citations": null,
+  "review_flags": null
+}

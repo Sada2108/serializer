@@ -13,12 +13,17 @@ import rcLowpassNirJson from "./rc_lowpass_001.nir.json"
 import rcLowpassAcNirJson from "./rc_lowpass_ac_001.nir.json"
 import rcLowpassFftNirJson from "./rc_lowpass_fft_001.nir.json"
 import lm358NoninvNirJson from "./lm358_noninv_001.nir.json"
+import layer2mockschemaNirJson from "./layer2mockschema.nir.json"
+import audioAmplifier1386NirJson from "./audio_amplifier_1386.nir.json"
+import audioAmplifierLm386NirJson from "./audioamplifier_lm386.nir.json"
+import timer555NirJson from "./555_timer.nir.json"
 export const opampNoninvNir = opampNoninvNirJson
 export const voltageDividerNir = voltageDividerNirJson
 export const rcLowpassNir = rcLowpassNirJson
 export const rcLowpassAcNir = rcLowpassAcNirJson
 export const rcLowpassFftNir = rcLowpassFftNirJson
 export const lm358NoninvNir = lm358NoninvNirJson
+export const timer555Nir = timer555NirJson
 // --------------------------------------------------------------------------- //
 // v0.1 (Libbrecht-Hall) — legacy schema
 // --------------------------------------------------------------------------- //
@@ -86,6 +91,16 @@ export interface NirV11Component {
     note?: string
   }
   _NEW_thermal_relief_required?: boolean
+  // simulation_source (VPULSE) PULSE parameters — mirrored 1:1 from the SPICE
+  // PULSE(V1 V2 TD TR TF PW PER) argument list. All optional: the netlist
+  // emitter falls back to SPICE's documented defaults for omitted fields.
+  pulse_v1?: string | null
+  pulse_v2?: string | null
+  pulse_td?: string | null
+  pulse_tr?: string | null
+  pulse_tf?: string | null
+  pulse_pw?: string | null
+  pulse_per?: string | null
 }
 
 export interface NirV11Connection {
@@ -161,3 +176,12 @@ export interface NirV11 {
 
 export const instrumentationAmpNir: NirV11 =
   instrumentationAmpRaw as unknown as NirV11
+
+export const layer2mockschemaNir: NirV11 =
+  layer2mockschemaNirJson as unknown as NirV11
+
+export const audioAmplifier1386Nir: NirV11 =
+  audioAmplifier1386NirJson as unknown as NirV11
+
+export const audioAmplifierLm386Nir: NirV11 =
+  audioAmplifierLm386NirJson as unknown as NirV11

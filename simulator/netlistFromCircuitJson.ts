@@ -20,6 +20,7 @@
 //   opamp             -> X (subckt, not modeled)
 //   voltage_source    -> V
 //   current_source    -> I
+//   simulation_source -> V (SPICE PULSE source; pulse_* params from NIR)
 //
 // For unsupported types (ICs, etc.), we emit a comment and a placeholder
 // 1-ohm resistor so the netlist parses but simulation will not be accurate.
@@ -80,6 +81,7 @@ const COMPONENT_TYPE_TO_SPICE_PREFIX: Record<string, string> = {
   ferrite_bead: "L",
   voltage_source: "V",
   current_source: "I",
+  simulation_source: "V",
   // ICs - not modeled as primitives
   opamp: "X",
   instrumentation_amp: "X",
@@ -121,6 +123,41 @@ function getAcMagnitudeFromV11Nir(nir: NirV11, ref: string): string | null {
     return comp.ac_magnitude
   }
   return null
+}
+
+type PulseParamKey =
+  | "pulse_v1"
+  | "pulse_v2"
+  | "pulse_td"
+  | "pulse_tr"
+  | "pulse_tf"
+  | "pulse_pw"
+  | "pulse_per"
+
+type PulseParams = Record<PulseParamKey, string | null>
+
+const PULSE_PARAM_KEYS: PulseParamKey[] = [
+  "pulse_v1",
+  "pulse_v2",
+  "pulse_td",
+  "pulse_tr",
+  "pulse_tf",
+  "pulse_pw",
+  "pulse_per",
+]
+
+/** Extract PULSE(V1 V2 TD TR TF PW PER) params from v1.1 NIR simulation_source */
+function getPulseParamsFromV11Nir(nir: NirV11, ref: string): PulseParams | null {
+  const comp = nir.components.find((c) => c.ref === ref)
+  if (!comp) return null
+  const out = {} as PulseParams
+  let found = false
+  for (const key of PULSE_PARAM_KEYS) {
+    const v = comp[key]
+    out[key] = typeof v === "string" && v.length > 0 ? v : null
+    if (out[key] !== null) found = true
+  }
+  return found ? out : null
 }
 
 /** Detect NIR schema version */
@@ -425,6 +462,70 @@ export function netlistFromCircuitJson(
         spiceLines.push(`${spiceRef} ${node1} ${node2} DC ${ival}`)
         break
       }
+      case "simulation_source": {
+        // SPICE PULSE source: V<ref> <node+> <node-> PULSE(V1 V2 TD TR TF PW PER)
+        // Params come from the NIR (pulse_* fields). Omitted ones fall back to
+        // the analysis window actually emitted by the .tran command below:
+        //   TR/TF -> timeStep, PW/PER -> duration
+        // (ngspice PULSE defaults are the transient TSTEP/TSTOP). Never emit a
+        // silent 0 for these — empirically on ngspice-46, PER=0 yields a
+        // 2*TSTEP period and PW=0 with an explicit period leaves the source
+        // flat at V1. V1/TD keep their safe SPICE defaults of 0.
+        const pulse = isV11 && v11Nir ? getPulseParamsFromV11Nir(v11Nir, ref) : null
+        const effectiveTimeStep = opts?.timeStep ?? (analysisType === "fft" ? "10u" : "1m")
+        const effectiveDuration = opts?.duration ?? "10m"
+        if (!pulse) {
+          warnings.push(
+            `Component ${ref} (simulation_source) has no PULSE parameters in NIR; ` +
+            `using V1/TD=0, TR/TF=${effectiveTimeStep}, PW/PER=${effectiveDuration}`,
+          )
+        } else {
+          for (const key of ["pulse_v2", "pulse_tr", "pulse_tf", "pulse_pw", "pulse_per"] as const) {
+            if (!pulse[key]) {
+              const fallback =
+                key === "pulse_v2"
+                  ? "0"
+                  : key === "pulse_tr" || key === "pulse_tf"
+                    ? effectiveTimeStep
+                    : effectiveDuration
+              warnings.push(
+                `Component ${ref} (simulation_source) missing ${key} — using fallback ${fallback}`,
+              )
+            }
+          }
+          if ((!pulse.pulse_tr || !pulse.pulse_tf) && opts?.timeStep === undefined) {
+            warnings.push(
+              `Component ${ref} (simulation_source) has no analysis timeStep in opts; ` +
+                `TR/TF use hard fallback ${effectiveTimeStep}`,
+            )
+          }
+          if ((!pulse.pulse_pw || !pulse.pulse_per) && opts?.duration === undefined) {
+            warnings.push(
+              `Component ${ref} (simulation_source) has no analysis duration in opts; ` +
+                `PW/PER use hard fallback ${effectiveDuration}`,
+            )
+          }
+        }
+        const pv1 = pulse?.pulse_v1 ?? "0"
+        const pv2 = pulse?.pulse_v2 ?? "0"
+        const ptd = pulse?.pulse_td ?? "0"
+        const ptr = pulse?.pulse_tr ?? effectiveTimeStep
+        const ptf = pulse?.pulse_tf ?? effectiveTimeStep
+        const ppw = pulse?.pulse_pw ?? effectiveDuration
+        const pper = pulse?.pulse_per ?? effectiveDuration
+        if (analysisType === "ac") {
+          const acVal = acMag ?? "1"
+          spiceLines.push(`${spiceRef} ${node1} ${node2} DC ${pv1} AC ${acVal}`)
+        } else if (analysisType === "op" || analysisType === "dc") {
+          spiceLines.push(`${spiceRef} ${node1} ${node2} DC ${pv1}`)
+        } else {
+          // tran and fft both drive a transient, so the source stays PULSE
+          spiceLines.push(
+            `${spiceRef} ${node1} ${node2} PULSE(${pv1} ${pv2} ${ptd} ${ptr} ${ptf} ${ppw} ${pper})`,
+          )
+        }
+        break
+      }
       default: {
         // IC or unsupported - emit placeholder + warning
         warnings.push(`Component ${ref} (${compType}) not modeled as SPICE primitive; emitting 1-ohm placeholder`)
@@ -454,13 +555,23 @@ export function netlistFromCircuitJson(
     nodeMap[gndName] = 0
   }
 
+  // Reverse map: SPICE node number -> net name (for matching emitted V-lines
+  // back to the nets they drive; nodeMap maps net name -> node number).
+  const nodeToNet: Record<string, string> = {}
+  for (const [netName, node] of Object.entries(nodeMap)) {
+    nodeToNet[String(node)] = netName
+  }
+
   // Track which nets already have a V-element driving them
   const netsWithVoltageSource = new Set<string>()
   for (const line of spiceLines) {
     // Match V<n> <node+> <node-> DC <val>  or  V<n> <node+> <node-> <val>
+    // The captured node is a number; resolve it back to its net name so the
+    // implicit-source heuristic below can skip nets already driven by a
+    // real V-element (e.g. simulation_source PULSE sources).
     const vMatch = line.match(/^V\d+\s+(\S+)\s+(\S+)/)
     if (vMatch) {
-      netsWithVoltageSource.add(vMatch[1])
+      netsWithVoltageSource.add(nodeToNet[vMatch[1]] ?? vMatch[1])
     }
   }
 

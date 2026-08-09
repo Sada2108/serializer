@@ -203,10 +203,8 @@ async function parseNirV11WithTscircuit(nir: NirV11): Promise<AnyCircuitElement[
   // 3. Run through CircuitRunner
   const circuitJson = await runTscircuit({ "circuit.tsx": jsx })
 
-  // 4. Return Circuit JSON elements (already includes pcb_board, pcb_component,
-  // schematic components,
-  // source_net, source_trace from the autorouter)
-  return circuitJson
+  // 4. Restore original NIR net names (sanitization was prop-only)
+  return restoreOriginalNetNames(circuitJson, nir.netlist)
 }
 
 // Synchronous fallback for v1.1 (used when @tscircuit/eval unavailable or for sync API)
@@ -225,18 +223,23 @@ function parseNirV11Sync(nir: NirV11): AnyCircuitElement[] {
 // NIR v1.1 -> tscircuit JSX generation
 // --------------------------------------------------------------------------- //
 
-// tscircuit's `net.<name>` JSX prop reserves `.`, `+`, `-`, and leading digits
-// for its own parsing (createNetsFromProps in @tscircuit/core):
-//   - /net\.[^\s>]*\./   -> period rejected
-//   - /net\.[^\s>]*[+-]/ -> "+" or "-" rejected
-//   - /net\.[0-9]/       -> leading digit rejected
-// Parens are NOT rejected. Real-world KiCad auto-names like "Net-(C324-Pad1)"
-// therefore break JSX generation, so we sanitize the name ONLY for the JSX
-// prop. The original NIR net name is restored onto the emitted source_net
-// elements after CircuitRunner returns (see restoreOriginalNetNames) so that
-// net identity in Circuit JSON / netlist / DRC stays the source-of-truth name.
+// tscircuit's `net.<name>` JSX prop syntax rejects certain characters at two
+// layers:
+//   1. createNetsFromProps regexes (@tscircuit/core):
+//      - /net\.[^\s>]*\./   -> period rejected
+//      - /net\.[^\s>]*[+-]/ -> "+" or "-" rejected
+//      - /net\.[0-9]/       -> leading digit rejected
+//   2. the runframe selector parser treats `(`, `)`, `>`, `<`, `~`, `+`, `.`,
+//      `#`, `[`, `:`, and whitespace as structural characters (grouping,
+//      child/parent/sibling/adjacent combinators, class/id/attribute/pseudo
+//      selectors, descendant separators), so parens and those are rejected too.
+// The safe set is therefore `[A-Za-z0-9_]`. Real-world KiCad auto-names like
+// "Net-(C324-Pad1)" must be sanitized for the JSX prop. The original NIR net
+// name is restored onto the emitted source_net elements after CircuitRunner
+// returns (see restoreOriginalNetNames) so that net identity in Circuit JSON /
+// netlist / DRC stays the source-of-truth name.
 export function sanitizeNetNameForJsx(netName: string): string {
-  let s = netName.replace(/[.+\-]/g, "_")
+  let s = netName.replace(/[^A-Za-z0-9_]/g, "_")
   if (/^[0-9]/.test(s)) s = `_${s}`
   return s
 }
@@ -384,6 +387,7 @@ ${traceJsx}
 function generateComponentJsx(comp: NirV11Component, netlist: NirV11NetlistEntry[]): string {
   const elementType = mapComponentType(comp.component_type)
   const isPassive = elementType === "resistor" || elementType === "capacitor" || elementType === "diode" || elementType === "inductor"
+  const isSimulationOnly = comp.component_type === "simulation_source"
 
   // Collect this component's pin names from the netlist (with pin_number for chips)
   const pinNames = new Set<string>()
@@ -399,8 +403,14 @@ function generateComponentJsx(comp: NirV11Component, netlist: NirV11NetlistEntry
 
   const props: string[] = [
     `name="${comp.ref}"`,
-    `footprint="${kicadFootprint(comp.footprint)}"`,
   ]
+
+  // Simulation-only sources (e.g. SPICE VPULSE) have footprint:null by design
+  // (DNP — do not populate). Skip the footprint prop so kicadFootprint() never
+  // receives null.
+  if (!isSimulationOnly) {
+    props.push(`footprint="${kicadFootprint(comp.footprint)}"`)
+  }
 
   // Value prop depends on component type
   // TODO: values may arrive as Unicode/unit strings ("1µF", "600R@100MHz") per
@@ -427,6 +437,39 @@ function generateComponentJsx(comp: NirV11Component, netlist: NirV11NetlistEntry
       })
       .join(", ")
     props.push(`pinLabels={{ ${pinLabelsObj} }}`)
+  }
+
+  // Footprint is the authoritative pin-count source for ICs. tscircuit sizes
+  // the schematic box from the highest pin in pinLabels when the footprint is
+  // not footprinter-parseable — a sparse netlist must never shrink the drawn
+  // box below the package's real pin count. schPortArrangement is checked
+  // FIRST by @tscircuit/core's _getPrimaryPinCount and forces ports 1..N.
+  if (!isPassive && !isSimulationOnly) {
+    const footprintPinCount = parsePinCountFromFootprint(comp.footprint)
+    if (footprintPinCount !== null) {
+      const refsPinNumbers = Array.from(pinNumberMap.values())
+        .map(Number)
+        .filter(Number.isFinite)
+      const maxReferencedPin = refsPinNumbers.length > 0 ? Math.max(...refsPinNumbers) : 0
+      if (maxReferencedPin > footprintPinCount) {
+        throw new Error(
+          `NIR data inconsistency: component ${comp.ref} footprint "${comp.footprint}" implies ${footprintPinCount} pins but the netlist references pin ${maxReferencedPin}.`,
+        )
+      }
+      if (pinNames.size > 0 && pinNames.size * 2 < footprintPinCount) {
+        console.warn(
+          `[serializer] Component ${comp.ref} (footprint: "${comp.footprint}", ${footprintPinCount} pins) netlist only references ${pinNames.size} pin(s) — drawing the full ${footprintPinCount}-pin box. The netlist may be incomplete.`,
+        )
+      }
+      const leftSize = Math.ceil(footprintPinCount / 2)
+      const rightSize = Math.floor(footprintPinCount / 2)
+      props.push(`schPortArrangement={{ leftSize: ${leftSize}, rightSize: ${rightSize} }}`)
+    } else {
+      console.warn(
+        `[serializer] Cannot determine pin count for IC ${comp.ref} (footprint: "${comp.footprint}") — rendering a 2-pin box. Add the package pin count to KNOWN_PACKAGE_PIN_COUNTS.`,
+      )
+      props.push(`schPortArrangement={{ leftSize: 1, rightSize: 1 }}`)
+    }
   }
 
   return `    <${elementType} ${props.join(" ")} />`
@@ -495,6 +538,22 @@ function generateCircuitJsonFromNir(nir: NirV11): AnyCircuitElement[] {
   // 1. pcb_board from board_spec
   out.push(emitPcbBoard(nir.board_spec))
 
+  // Highest netlist-referenced pin per component ref. Only the netlist
+  // constrains what we are allowed to draw; the footprint decides how many
+  // pins the part actually has.
+  const maxReferencedPinByRef = new Map<string, number>()
+  for (const net of nir.netlist) {
+    for (const conn of net.connections) {
+      const n = Number(conn.pin_number)
+      if (Number.isFinite(n)) {
+        maxReferencedPinByRef.set(
+          conn.ref,
+          Math.max(maxReferencedPinByRef.get(conn.ref) ?? 0, n),
+        )
+      }
+    }
+  }
+
   // 2. Components: source_component_base + pcb_component + schematic_component
   for (let i = 0; i < nir.components.length; i++) {
     const comp = nir.components[i]
@@ -511,7 +570,7 @@ function generateCircuitJsonFromNir(nir: NirV11): AnyCircuitElement[] {
       : naivePosition(comp.ref, i)
 
     out.push(emitPcbComponent(comp, pos.x, pos.y, pos.rot))
-    out.push(...emitSchematicComponent(comp, pos.x, pos.y, DEFAULT_SCHEMATIC_SHEET_ID))
+    out.push(...emitSchematicComponent(comp, pos.x, pos.y, DEFAULT_SCHEMATIC_SHEET_ID, maxReferencedPinByRef.get(comp.ref)))
   }
 
   // 3. Nets + traces from netlist
@@ -663,10 +722,30 @@ function emitSchematicComponent(
   x: number,
   y: number,
   schematicSheetId: string = DEFAULT_SCHEMATIC_SHEET_ID,
+  maxReferencedPin?: number,
 ): AnyCircuitElement[] {
   const refSchId = `${comp.ref}_sch`
-  const pinCount = inferPinCount(comp.footprint)
   const isIc = isIC(comp.component_type)
+  // Footprint is the authoritative pin-count source. The netlist is NOT: a
+  // sparse netlist (e.g. only 1 of 36 pins referenced) must never shrink the
+  // drawn pin count below what the package actually has.
+  const footprintPinCount = parsePinCountFromFootprint(comp.footprint)
+  let pinCount: number
+  if (isIc && footprintPinCount !== null) {
+    if (maxReferencedPin !== undefined && maxReferencedPin > footprintPinCount) {
+      throw new Error(
+        `NIR data inconsistency: component ${comp.ref} footprint "${comp.footprint}" implies ${footprintPinCount} pins but the netlist references pin ${maxReferencedPin}.`,
+      )
+    }
+    pinCount = footprintPinCount
+  } else if (isIc) {
+    console.warn(
+      `[serializer] Cannot determine pin count for IC ${comp.ref} (footprint: "${comp.footprint}") — rendering a 2-pin box. Add the package pin count to KNOWN_PACKAGE_PIN_COUNTS.`,
+    )
+    pinCount = 2
+  } else {
+    pinCount = inferPinCount(comp.footprint)
+  }
   const elements: AnyCircuitElement[] = []
 
   const partNumber = typeof comp.value === "string" ? comp.value : undefined
@@ -1033,15 +1112,65 @@ function emitSourceTrace(
   } as AnyCircuitElement
 }
 
-function inferPinCount(footprint: string): number {
-  switch (footprint) {
-    case "MSOP-8": return 8
-    case "MSOP-10": return 10
-    case "SOT-23-5":
-    case "TSOT-23-5": return 5
-    case "SOT-23": return 3
-    default: return 2
+// Authoritative IC pin-count source. Package strings typically encode the pin
+// count ("PowerSSO-36", "MSOP-8", "SOT-23-5"); full KiCad footprint refs
+// ("kicad:Package_SO/MSOP-8-1EP_3x3mm_P0.65mm_EP1.5x1.8mm") carry it too.
+// Returns null when no reliable count can be derived — callers must NOT silently
+// fall back to "how many distinct pins the netlist happens to mention".
+const KNOWN_PACKAGE_PIN_COUNTS: [string, number][] = ([
+  ["TSOT-23-5", 5], ["SOT-23-5", 5],
+  ["PowerSSO-36", 36], ["PowerSSO-24", 24],
+  ["MSOP-10", 10], ["MSOP-8", 8],
+  ["SOIC-16", 16], ["SOIC-14", 14], ["SOIC-8", 8], ["SOIC8", 8],
+  ["TSSOP-20", 20], ["TSSOP-16", 16], ["TSSOP-14", 14], ["TSSOP-8", 8],
+  ["QFN-32", 32], ["QFN-28", 28], ["QFN-24", 24], ["QFN-16", 16],
+  ["QFP-64", 64], ["QFP-48", 48], ["QFP-44", 44], ["QFP-32", 32],
+  ["LQFP-64", 64], ["LQFP-48", 48], ["LQFP-44", 44], ["LQFP-32", 32],
+  ["DIP-20", 20], ["DIP-16", 16], ["DIP-14", 14], ["DIP-8", 8],
+  ["SSOP-24", 24], ["SSOP-20", 20], ["SSOP-16", 16], ["SSOP-14", 14], ["SSOP-8", 8],
+  ["SOP-16", 16], ["SOP-14", 14], ["SOP-8", 8],
+  ["PLCC-44", 44], ["PLCC-32", 32], ["PLCC-28", 28], ["PLCC-20", 20],
+  ["SOT-223", 4], ["SOT-89", 3], ["SOT-323", 3], ["SOT-23-6", 6], ["SOT-23", 3],
+  ["TO-220-7", 7], ["TO-220-5", 5], ["TO-220-3", 3], ["TO-220", 3],
+  ["TO-247-4", 4], ["TO-247-3", 3], ["TO-247", 3],
+  ["TO-263-7", 7], ["TO-263-5", 5], ["TO-263-3", 3], ["TO-263", 3],
+  ["TO-252-5", 5], ["TO-252-3", 3], ["TO-252", 3],
+  ["D2PAK-7", 7], ["D2PAK-5", 5], ["D2PAK-3", 3], ["D2PAK", 3],
+  ["DPAK-5", 5], ["DPAK-3", 3], ["DPAK", 3],
+  ["TO-126", 3], ["TO-251", 3], ["TO-92", 3],
+] as [string, number][]).sort((a, b) => b[0].length - a[0].length)
+
+export function parsePinCountFromFootprint(footprint: string): number | null {
+  if (!footprint) return null
+  const upper = footprint.toUpperCase()
+  for (const [pkg, count] of KNOWN_PACKAGE_PIN_COUNTS) {
+    if (upper.includes(pkg)) return count
   }
+  // Connector row×pins convention: "PinHeader_1x08", "PinHeader_2x03",
+  // "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" → rows × cols.
+  // Gated on connector-family keywords so body dimensions like "3x3mm" in
+  // KiCad package refs are never misread as 3×3 = 9 pins.
+  const mRowPins = footprint.match(/(\d+)x(\d+)/i)
+  if (
+    mRowPins &&
+    /(PINHEADER|HEADER|CONNECTOR|CONN|SOCKET|TERMINAL|TERMBLOCK|JST|XH|MOLEX)/i.test(upper)
+  ) {
+    const n = parseInt(mRowPins[1], 10) * parseInt(mRowPins[2], 10)
+    if (Number.isFinite(n) && n >= 2 && n <= 256) return n
+  }
+  // Generic: a standalone numeric token between separators (e.g. "36" in
+  // "IC-PowerSSO-36-EPU"). Rejects size codes like "0603"/"0805" (> 256) so
+  // passive footprints never match.
+  const m = footprint.match(/(?:^|[-_/])(\d{1,3})(?:[-_]|$)/)
+  if (m) {
+    const n = parseInt(m[1], 10)
+    if (Number.isFinite(n) && n >= 2 && n <= 256) return n
+  }
+  return null
+}
+
+function inferPinCount(footprint: string): number {
+  return parsePinCountFromFootprint(footprint) ?? 2
 }
 
 function isIC(componentType: string): boolean {

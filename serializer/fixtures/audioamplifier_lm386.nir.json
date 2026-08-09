@@ -1,0 +1,986 @@
+{
+  "schema_version": "1.2",
+  "design_id": "ulp_instrumentation_amp_001",
+  "prompt": null,
+  "design_methodology": null,
+  "created_at": "2026-07-05T11:40:00Z",
+  "pipeline_version": "1.2",
+  "topology": "AutoZero_InAmp_with_Digital_Gain_Control",
+  "_NEW_board_class": {
+    "layer_class": "multi_layer",
+    "rigidity_class": "rigid",
+    "signal_domain_class": "mixed_signal",
+    "functional_domain_class": "sensor_instrumentation",
+    "material_class": "FR4_standard",
+    "volume_class": "prototype_low_volume",
+    "confidence": 0.85,
+    "source": "derived_from_topology_and_board_spec"
+  },
+  "_NEW_power_tree": {
+    "input_source": {
+      "type": "single_cell_liion",
+      "voltage_min_v": null,
+      "voltage_max_v": null,
+      "typical_capacity_mah": null
+    },
+    "rails": [
+      {
+        "rail_name": "VCC_ANALOG",
+        "nominal_voltage_v": null,
+        "regulator_ref": "U3",
+        "regulator_type": "LDO",
+        "quiescent_current_ua": null,
+        "max_load_current_ua": null,
+        "consumers": [
+          "U1",
+          "U2",
+          "U4"
+        ]
+      },
+      {
+        "rail_name": "VREF",
+        "nominal_voltage_v": null,
+        "regulator_ref": "U2",
+        "regulator_type": "precision_reference",
+        "quiescent_current_ua": null,
+        "max_load_current_ua": null,
+        "consumers": [
+          "BridgeSensor_excitation"
+        ]
+      }
+    ],
+    "power_budget_table": null,
+    "total_budget_ua": null,
+    "total_estimated_ua": null,
+    "margin_ua": null,
+    "regulator_topology_note": "LDO chosen over buck converter for VCC_ANALOG to prioritize low noise over efficiency, consistent with sub-5µV offset and sub-50nV/√Hz noise targets."
+  },
+  "components": [
+    {
+      "ref": "U1",
+      "component_id": "AD8235",
+      "component_type": "instrumentation_amp",
+      "footprint": "MSOP-8",
+      "footprint_geometry_ref": "tscircuit_builtin:MSOP-8",
+      "value": null,
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null,
+      "_NEW_courtyard_mm": {
+        "x": 6.0,
+        "y": 5.5,
+        "note": "Clearance boundary for pick-and-place nozzle, per Step 4 courtyard concept"
+      },
+      "_NEW_thermal_relief_required": false
+    },
+    {
+      "ref": "U2",
+      "component_id": "ADR280",
+      "component_type": "voltage_reference",
+      "footprint": "SOT-23-5",
+      "footprint_geometry_ref": "tscircuit_builtin:SOT-23-5",
+      "value": "2.8V",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "U3",
+      "component_id": "LT3009",
+      "component_type": "ldo_regulator",
+      "footprint": "TSOT-23-5",
+      "footprint_geometry_ref": "tscircuit_builtin:TSOT-23-5",
+      "value": null,
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "U4",
+      "component_id": "AD5272",
+      "component_type": "digital_potentiometer",
+      "footprint": "MSOP-10",
+      "footprint_geometry_ref": "tscircuit_builtin:MSOP-10",
+      "value": "20k",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "R1",
+      "component_id": "generic_thin_film",
+      "component_type": "resistor",
+      "footprint": "0603",
+      "footprint_geometry_ref": "tscircuit_builtin:0603",
+      "value": "49.9",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "R2",
+      "component_id": "generic_thin_film",
+      "component_type": "resistor",
+      "footprint": "0603",
+      "footprint_geometry_ref": "tscircuit_builtin:0603",
+      "value": "10k",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "R3",
+      "component_id": "generic_thin_film",
+      "component_type": "resistor",
+      "footprint": "0402",
+      "footprint_geometry_ref": "tscircuit_builtin:0402",
+      "value": "1k",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "R4",
+      "component_id": "generic_thin_film",
+      "component_type": "resistor",
+      "footprint": "0402",
+      "footprint_geometry_ref": "tscircuit_builtin:0402",
+      "value": "1k",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "C1",
+      "component_id": "C0G_NP0",
+      "component_type": "capacitor",
+      "footprint": "0603",
+      "footprint_geometry_ref": "tscircuit_builtin:0603",
+      "value": "1µF",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "C2",
+      "component_id": "C0G_X7R",
+      "component_type": "capacitor",
+      "footprint": "0603",
+      "footprint_geometry_ref": "tscircuit_builtin:0603",
+      "value": "1µF",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "C3",
+      "component_id": "C0G_NP0",
+      "component_type": "capacitor",
+      "footprint": "0402",
+      "footprint_geometry_ref": "tscircuit_builtin:0402",
+      "value": "100nF",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "C4",
+      "component_id": "C0G_NP0",
+      "component_type": "capacitor",
+      "footprint": "0402",
+      "footprint_geometry_ref": "tscircuit_builtin:0402",
+      "value": "100nF",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "D1",
+      "component_id": "PESD5V0S1BA",
+      "component_type": "tvs_diode_array",
+      "footprint": "SOT-23",
+      "footprint_geometry_ref": "tscircuit_builtin:SOT-23",
+      "value": null,
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "FB1",
+      "component_id": "BLM18_ferrite",
+      "component_type": "ferrite_bead",
+      "footprint": "0603",
+      "footprint_geometry_ref": "tscircuit_builtin:0603",
+      "value": "600R@100MHz",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    },
+    {
+      "ref": "C5",
+      "component_id": "Electrolytic_low_ESR",
+      "component_type": "capacitor",
+      "footprint": "1206",
+      "footprint_geometry_ref": "tscircuit_builtin:1206",
+      "value": "22µF",
+      "manufacturer": null,
+      "datasheet_confidence": null,
+      "justification": null,
+      "position": {
+        "x_mm": null,
+        "y_mm": null,
+        "rotation_deg": null
+      },
+      "position_confidence": 0.0,
+      "position_source": "unassigned",
+      "confidence_by_layer": null
+    }
+  ],
+  "netlist": [
+    {
+      "net_name": "VBAT",
+      "net_type": "power",
+      "connections": [
+        {
+          "ref": "Battery",
+          "pin_name": "POSITIVE",
+          "pin_number": "1"
+        },
+        {
+          "ref": "FB1",
+          "pin_name": "IN",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "battery_distribution",
+      "net_confidence": 0.93,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 1
+    },
+    {
+      "net_name": "VBAT_FILTERED",
+      "net_type": "power",
+      "connections": [
+        {
+          "ref": "FB1",
+          "pin_name": "OUT",
+          "pin_number": "2"
+        },
+        {
+          "ref": "C5",
+          "pin_name": "POSITIVE",
+          "pin_number": "1"
+        },
+        {
+          "ref": "U3",
+          "pin_name": "VIN",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "emi_filter_stage",
+      "net_confidence": 0.9,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 1
+    },
+    {
+      "net_name": "VCC_ANALOG",
+      "net_type": "power",
+      "connections": [
+        {
+          "ref": "U3",
+          "pin_name": "VOUT",
+          "pin_number": "3"
+        },
+        {
+          "ref": "U1",
+          "pin_name": "VCC",
+          "pin_number": "8"
+        },
+        {
+          "ref": "U2",
+          "pin_name": "VIN",
+          "pin_number": "2"
+        },
+        {
+          "ref": "U4",
+          "pin_name": "VDD",
+          "pin_number": "10"
+        },
+        {
+          "ref": "C2",
+          "pin_name": "POSITIVE",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "rail_generation",
+      "net_confidence": 0.92,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 1
+    },
+    {
+      "net_name": "VREF",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "U2",
+          "pin_name": "VOUT",
+          "pin_number": "5"
+        },
+        {
+          "ref": "R2",
+          "pin_name": "IN",
+          "pin_number": "1"
+        },
+        {
+          "ref": "C1",
+          "pin_name": "POSITIVE",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "reference_distribution",
+      "net_confidence": 0.9,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "GND",
+      "net_type": "power",
+      "connections": [
+        {
+          "ref": "Battery",
+          "pin_name": "NEGATIVE",
+          "pin_number": "2"
+        },
+        {
+          "ref": "U1",
+          "pin_name": "GND",
+          "pin_number": "4"
+        },
+        {
+          "ref": "U2",
+          "pin_name": "GND",
+          "pin_number": "3"
+        },
+        {
+          "ref": "U3",
+          "pin_name": "GND",
+          "pin_number": "2"
+        },
+        {
+          "ref": "U4",
+          "pin_name": "GND",
+          "pin_number": "4"
+        },
+        {
+          "ref": "C1",
+          "pin_name": "NEGATIVE",
+          "pin_number": "2"
+        },
+        {
+          "ref": "C2",
+          "pin_name": "NEGATIVE",
+          "pin_number": "2"
+        },
+        {
+          "ref": "C5",
+          "pin_name": "NEGATIVE",
+          "pin_number": "2"
+        }
+      ],
+      "source_rule": "ground_plane",
+      "net_confidence": 0.96,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 0
+    },
+    {
+      "net_name": "BRIDGE_EXCITE",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "R2",
+          "pin_name": "OUT",
+          "pin_number": "2"
+        },
+        {
+          "ref": "BridgeSensor",
+          "pin_name": "EXCITE_TOP",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "bridge_interface",
+      "net_confidence": 0.87,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "BRIDGE_IN_PLUS",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "BridgeSensor",
+          "pin_name": "SIG_PLUS",
+          "pin_number": "2"
+        },
+        {
+          "ref": "D1",
+          "pin_name": "IO1",
+          "pin_number": "1"
+        },
+        {
+          "ref": "R3",
+          "pin_name": "IN",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "bridge_interface",
+      "net_confidence": 0.86,
+      "_NEW_controlled_impedance": {
+        "type": "single_ended_high_impedance",
+        "target_ohms": null,
+        "note": "High-Z analog input, impedance control not applicable — matched-length pairing with BRIDGE_IN_MINUS is the priority instead"
+      },
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "BRIDGE_IN_MINUS",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "BridgeSensor",
+          "pin_name": "SIG_MINUS",
+          "pin_number": "3"
+        },
+        {
+          "ref": "D1",
+          "pin_name": "IO2",
+          "pin_number": "3"
+        },
+        {
+          "ref": "R4",
+          "pin_name": "IN",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "bridge_interface",
+      "net_confidence": 0.86,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "AMP_IN_PLUS_FILTERED",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "R3",
+          "pin_name": "OUT",
+          "pin_number": "2"
+        },
+        {
+          "ref": "C3",
+          "pin_name": "POSITIVE",
+          "pin_number": "1"
+        },
+        {
+          "ref": "U1",
+          "pin_name": "IN+",
+          "pin_number": "3"
+        }
+      ],
+      "source_rule": "input_filter",
+      "net_confidence": 0.88,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "AMP_IN_MINUS_FILTERED",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "R4",
+          "pin_name": "OUT",
+          "pin_number": "2"
+        },
+        {
+          "ref": "C4",
+          "pin_name": "POSITIVE",
+          "pin_number": "1"
+        },
+        {
+          "ref": "U1",
+          "pin_name": "IN-",
+          "pin_number": "2"
+        }
+      ],
+      "source_rule": "input_filter",
+      "net_confidence": 0.88,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "GAIN_SET",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "U1",
+          "pin_name": "RG1",
+          "pin_number": "1"
+        },
+        {
+          "ref": "R1",
+          "pin_name": "IN",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "gain_network",
+      "net_confidence": 0.85,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "GAIN_SET_RG",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "R1",
+          "pin_name": "OUT",
+          "pin_number": "2"
+        },
+        {
+          "ref": "U4",
+          "pin_name": "A",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "gain_network",
+      "net_confidence": 0.83,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "GAIN_SET_RETURN",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "U4",
+          "pin_name": "B",
+          "pin_number": "3"
+        },
+        {
+          "ref": "U1",
+          "pin_name": "RG2",
+          "pin_number": "5"
+        }
+      ],
+      "source_rule": "gain_network",
+      "net_confidence": 0.83,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    },
+    {
+      "net_name": "I2C_SDA",
+      "net_type": "digital",
+      "connections": [
+        {
+          "ref": "U4",
+          "pin_name": "SDA",
+          "pin_number": "7"
+        },
+        {
+          "ref": "MCU_Header",
+          "pin_name": "SDA",
+          "pin_number": "1"
+        }
+      ],
+      "source_rule": "digital_control",
+      "net_confidence": 0.82,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 3
+    },
+    {
+      "net_name": "I2C_SCL",
+      "net_type": "digital",
+      "connections": [
+        {
+          "ref": "U4",
+          "pin_name": "SCL",
+          "pin_number": "6"
+        },
+        {
+          "ref": "MCU_Header",
+          "pin_name": "SCL",
+          "pin_number": "2"
+        }
+      ],
+      "source_rule": "digital_control",
+      "net_confidence": 0.82,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 3
+    },
+    {
+      "net_name": "AMP_OUT",
+      "net_type": "analog",
+      "connections": [
+        {
+          "ref": "U1",
+          "pin_name": "OUT",
+          "pin_number": "6"
+        },
+        {
+          "ref": "MCU_Header",
+          "pin_name": "ADC_IN",
+          "pin_number": "3"
+        }
+      ],
+      "source_rule": "output_network",
+      "net_confidence": 0.89,
+      "_NEW_controlled_impedance": null,
+      "_NEW_routing_priority_tier": 2
+    }
+  ],
+  "_NEW_routing_priority_hierarchy": {
+    "tiers": [
+      {
+        "tier": 0,
+        "name": "ground_and_power_planes",
+        "nets": [
+          "GND"
+        ]
+      },
+      {
+        "tier": 1,
+        "name": "power_rails",
+        "nets": [
+          "VBAT",
+          "VBAT_FILTERED",
+          "VCC_ANALOG"
+        ]
+      },
+      {
+        "tier": 2,
+        "name": "sensitive_analog_signals",
+        "nets": [
+          "VREF",
+          "BRIDGE_EXCITE",
+          "BRIDGE_IN_PLUS",
+          "BRIDGE_IN_MINUS",
+          "AMP_IN_PLUS_FILTERED",
+          "AMP_IN_MINUS_FILTERED",
+          "GAIN_SET",
+          "GAIN_SET_RG",
+          "GAIN_SET_RETURN",
+          "AMP_OUT"
+        ]
+      },
+      {
+        "tier": 3,
+        "name": "general_digital_io",
+        "nets": [
+          "I2C_SDA",
+          "I2C_SCL"
+        ]
+      },
+      {
+        "tier": 4,
+        "name": "copper_pours_and_thermal",
+        "nets": []
+      }
+    ]
+  },
+  "placement_constraints": [
+    {
+      "ref": "U1",
+      "constraint_type": "proximity",
+      "relative_to": "R3",
+      "relative_to_type": "component",
+      "max_distance_mm": 8.0,
+      "hard": true,
+      "source": "input_filter_stability_rule",
+      "confidence": 0.9
+    },
+    {
+      "ref": "R3",
+      "constraint_type": "proximity",
+      "relative_to": "R4",
+      "relative_to_type": "component",
+      "max_distance_mm": 3.0,
+      "hard": true,
+      "source": "matched_pair_rule",
+      "confidence": 0.93
+    },
+    {
+      "ref": "C2",
+      "constraint_type": "proximity",
+      "relative_to": "U3",
+      "relative_to_type": "component",
+      "max_distance_mm": 5.0,
+      "hard": true,
+      "source": "ldo_stability_rule",
+      "confidence": 0.94
+    },
+    {
+      "ref": "C1",
+      "constraint_type": "proximity",
+      "relative_to": "U2",
+      "relative_to_type": "component",
+      "max_distance_mm": 5.0,
+      "hard": true,
+      "source": "reference_bypass_rule",
+      "confidence": 0.92
+    },
+    {
+      "ref": "FB1",
+      "constraint_type": "proximity",
+      "relative_to": "Battery",
+      "relative_to_type": "component",
+      "max_distance_mm": 10.0,
+      "hard": false,
+      "source": "emi_entry_point_rule",
+      "confidence": 0.8
+    },
+    {
+      "ref": "U4",
+      "constraint_type": "isolation",
+      "relative_to": "U1",
+      "relative_to_type": "component",
+      "max_distance_mm": 15.0,
+      "hard": false,
+      "source": "digital_noise_isolation_rule",
+      "confidence": 0.82
+    }
+  ],
+  "placement_rules_text": null,
+  "component_groups": [
+    {
+      "name": "Input_Front_End",
+      "refs": [
+        "D1",
+        "R3",
+        "R4",
+        "C3",
+        "C4"
+      ],
+      "keep_together": true,
+      "isolation_required": true
+    },
+    {
+      "name": "Amplifier_Core",
+      "refs": [
+        "U1",
+        "R1"
+      ],
+      "keep_together": true,
+      "isolation_required": true
+    },
+    {
+      "name": "Gain_Control_Digital",
+      "refs": [
+        "U4"
+      ],
+      "keep_together": false,
+      "isolation_required": true
+    },
+    {
+      "name": "Reference_Excitation",
+      "refs": [
+        "U2",
+        "R2",
+        "C1"
+      ],
+      "keep_together": true,
+      "isolation_required": false
+    },
+    {
+      "name": "Power_Conditioning",
+      "refs": [
+        "FB1",
+        "C5",
+        "U3",
+        "C2"
+      ],
+      "keep_together": true,
+      "isolation_required": false
+    }
+  ],
+  "routing_hints": [
+    {
+      "nets": [
+        "BRIDGE_IN_PLUS",
+        "BRIDGE_IN_MINUS"
+      ],
+      "hint_type": "matched_length",
+      "value": 0.5,
+      "unit": "mm",
+      "note": "Match trace lengths within 0.5mm and route as a tight differential pair to preserve CMRR"
+    },
+    {
+      "nets": [
+        "I2C_SDA",
+        "I2C_SCL"
+      ],
+      "hint_type": "separation",
+      "value": 4.0,
+      "unit": "mm",
+      "note": "Keep at least 4mm from all analog input and reference traces, add ground guard trace if routed nearby"
+    },
+    {
+      "nets": [
+        "GND"
+      ],
+      "hint_type": "ground_plane",
+      "value": null,
+      "unit": "continuous",
+      "note": "Single star-ground point separating excitation return, amplifier return, and digital return"
+    },
+    {
+      "nets": [
+        "VBAT_FILTERED"
+      ],
+      "hint_type": "trace_width",
+      "value": 0.4,
+      "unit": "mm",
+      "note": "Sized for <300µA total draw, no high-current path in this design"
+    }
+  ],
+  "_NEW_thermal_management": {
+    "thermal_vias_required": false,
+    "hot_components": [],
+    "thermal_relief_pads": [],
+    "note": "Total system current <250µA — no components exceed thermal design thresholds requiring dedicated thermal vias."
+  },
+  "board_spec": {
+    "layers": 4,
+    "material": "FR4",
+    "thickness_mm": 1.6,
+    "copper_weight_oz": 1.0,
+    "min_trace_width_mm": 0.15,
+    "min_clearance_mm": 0.15,
+    "min_via_drill_mm": 0.3,
+    "surface_finish": "ENIG",
+    "_NEW_stackup_arrangement": "Signal-GND-PWR-Signal",
+    "_NEW_prepreg_core_note": "Standard 4-layer core/prepreg construction assumed; exact dielectric spacing not yet field-solved.",
+    "_NEW_annular_ring_min_mm": 0.15
+  },
+  "performance_specs": null,
+  "topology_details": {
+    "type": "Single_IC_InAmp_AutoZero_with_Digital_Gain",
+    "description": "AD8235 auto-zero instrumentation amplifier reads a resistive bridge sensor differentially through a symmetric RC input filter and TVS-protected front end. Gain is set digitally via an I2C RDAC (AD5272) acting as the external gain resistor, allowing runtime-programmable gain from 10 to 1000 without hardware changes. All rails derived from a single Li-ion cell via a micropower LDO and reference.",
+    "servo_gain": null,
+    "output_compliance": "0.1V to 2.9V (referenced to GND, single-supply)"
+  },
+  "bom": [],
+  "justifications": null,
+  "source_citations": null,
+  "review_flags": null
+}

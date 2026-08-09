@@ -1,4 +1,4 @@
-// Interactive SPICE simulator viewer driver using Plotly.js.
+// Interactive SPICE simulator viewer driver using uPlot (canvas charting).
 // Usage: bun run render_interactive_simulator.ts [fixture_name]
 //   fixture_name: voltage_divider_001 (default) | opamp_noninv_001 | rc_lowpass_001
 // Output: layer_three/dev-tools/current_sim.html (always overwritten)
@@ -12,6 +12,7 @@ import { netlistFromCircuitJson } from "../../layer_three/simulator/netlistFromC
 import { parseRawFile } from "../../layer_three/simulator/parseRawFile.ts"
 import { parseFourierOutput } from "../../layer_three/simulator/parseFourierOutput.ts"
 import { opampNoninvNir, voltageDividerNir, rcLowpassNir, rcLowpassAcNir, rcLowpassFftNir, type NirV11 } from "../../layer_three/serializer/fixtures/index.ts"
+import { toDisplayX } from "./axisScale.ts"
 
 const FIXTURES = {
   opamp_noninv_001: opampNoninvNir,
@@ -189,6 +190,12 @@ function readTemplate(): string {
   return readFileSync(tplPath, "utf8")
 }
 
+// The shared scale-mode lookup/gating logic is inlined verbatim into the
+// generated page via {{SCALE_MODE_JS}} (and unit-tested in scaleMode.test.ts).
+function readScaleModeJs(): string {
+  return readFileSync(join(import.meta.dir, "scaleMode.js"), "utf8")
+}
+
 function replaceAll(tpl: string, token: string, value: string): string {
   return tpl.split(token).join(value)
 }
@@ -266,6 +273,8 @@ async function main() {
 
     let html = readTemplate()
     html = replaceAll(html, "{{DESIGN_ID}}", designId)
+    html = replaceAll(html, "{{SCALE_MODE_JS}}", readScaleModeJs())
+    html = replaceAll(html, "{{SCHEMATIC_FILE}}", "current_schematic.html")
     html = replaceAll(html, "{{WARN_BANNER}}", "")
     html = replaceAll(html, "{{PROBES_JSON}}", probeJson)
     html = replaceAll(html, "{{TIME_JSON}}", xValuesJson)
@@ -326,6 +335,13 @@ async function main() {
   if (analysisType === "ac" && parsed.complexVectors) {
     for (let i = 0; i < probes.length; i++) {
       const p = probes[i]
+      // Skip the x-axis sweep variable. ngspice names its AC sweep axis
+      // "frequency" in the .raw output; this is a reserved variable name
+      // (a user-named "frequency" node would collide with ngspice's own
+      // namespace), so filtering by exact name match is safe here. The
+      // earlier determination above already bound parsed.vectors["frequency"]
+      // to the x-axis, so excluding it here prevents a frequency-vs-itself trace.
+      if (p.name === "frequency") continue
       const imag = parsed.complexVectors[p.name]
       if (!imag) continue
       // Magnitude in dB: 20 * log10(|H(f)|)
@@ -354,8 +370,8 @@ async function main() {
     }
   }
 
-  // x-axis data: time in ms for TRAN, raw values for DC, frequency for AC, index for OP
-  const xValues = time ? time.map((t: number) => t * 1000) : probes[0]?.values.map((_: number, i: number) => i) ?? []
+  // x-axis data: time in ms for TRAN/OP/FFT, raw frequency for AC, index for OP
+  const xValues = time ? toDisplayX(analysisType, time) : probes[0]?.values.map((_: number, i: number) => i) ?? []
   const xLabel = xAxisLabel
   const tStartMs = xValues[0] ?? 0
   const tEndMs = xValues[xValues.length - 1] ?? 1
@@ -373,7 +389,7 @@ async function main() {
 
   const designId = nir.design_id || fixtureName
 
-  console.log("== Step 5 — build interactive HTML (Plotly.js) ==")
+  console.log("== Step 5 — build interactive HTML (uPlot) ==")
 
   const probeJson = JSON.stringify(displayProbes)
   const xValuesJson = JSON.stringify(xValues)
@@ -382,6 +398,7 @@ async function main() {
   // Read the HTML template and replace placeholders
   let html = readTemplate()
   html = replaceAll(html, "{{DESIGN_ID}}", designId)
+  html = replaceAll(html, "{{SCALE_MODE_JS}}", readScaleModeJs())
   html = replaceAll(html, "{{SCHEMATIC_FILE}}", "current_schematic.html")
   html = replaceAll(html, "{{WARN_BANNER}}", warnBannerHtml)
   html = replaceAll(html, "{{PROBES_JSON}}", probeJson)

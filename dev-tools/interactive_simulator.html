@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <title>SPICE Simulator — {{DESIGN_ID}}</title>
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<meta name="sim-viewer-build" content="zoom-yrefit-wheelfix-opbanner-grab-2026-08-09">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css">
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
 <style>
   :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   body { margin:0; padding:0; background:#f4f4f4; color:#222; }
@@ -37,9 +39,22 @@
   .slider-row .val { min-width:80px; text-align:right; font-family:ui-monospace,Menlo,Consolas,monospace; color:#555; font-size:11px; }
   .slider-row .unit { color:#999; font-size:11px; }
   .slider-panel .server-note { font-size:10px; color:#999; margin-top:4px; }
+  .op-table-wrap { padding:14px; }
+  .op-table { border-collapse:collapse; font-size:13px; width:100%; }
+  .op-table th { background:#f7f7f7; text-align:left; padding:6px 10px; font-weight:600; color:#555; border-bottom:1px solid #ddd; }
+  .op-table td { padding:6px 10px; border-bottom:1px solid #f2f2f2; font-family:ui-monospace, Menlo, Consolas, monospace; }
+  .op-table td.sig { font-family:inherit; }
+  .op-table .swatch { display:inline-block; width:12px; height:12px; border-radius:2px; vertical-align:middle; margin-right:6px; }
   .slider-panel .server-note.error { color:#c00; }
   .slider-loading { display:inline-block; width:10px; height:10px; border:2px solid #ccc; border-top-color:#333; border-radius:50%; animation:spin .6s linear infinite; margin-left:6px; vertical-align:middle; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  #chart.no-grid .u-grid { display:none; }
+  #chart.no-legend .u-legend { display:none; }
+  #chart .u-legend { margin:4px 6px; flex-wrap:wrap; }
+  #simOverlay { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(255,255,255,.6); z-index:5; font-size:12px; color:#555; }
+  .warn-banner.error { background:#f8d7da; color:#721c24; border-bottom-color:#f5c6cb; }
+  .warn-banner.info { background:#d1ecf1; color:#0c5460; border-bottom-color:#bee5eb; }
+
 </style>
 </head>
 <body>
@@ -52,18 +67,38 @@
         <option value="op" {{OP_SELECTED}}>Operating Point (OP)</option>
         <option value="dc" {{DC_SELECTED}}>DC Sweep (DC)</option>
         <option value="ac" {{AC_SELECTED}}>AC Analysis (AC)</option>
-        <option value="pz" disabled>Pole-Zero (PZ)</option>
-        <option value="noise" disabled>Noise (NOISE)</option>
-        <option value="sp" disabled>S-Parameter (SP)</option>
+        <option value="pz" disabled title="Not available: ngspice .pz runs but emits no usable output (known ngspice-46 limitation)">Pole-Zero (PZ)</option>
+        <option value="noise" disabled title="Not available: noise analysis is not supported by the netlist generator">Noise (NOISE)</option>
+        <option value="sp" disabled title="Not available: S-parameter analysis is not supported by the netlist generator">S-Parameter (SP)</option>
         <option value="fft" {{FFT_SELECTED}}>FFT (Fourier)</option>
       </select>
     </label>
     <div class="sep"></div>
+    <label>Scale:
+      <select id="scaleMode" onchange="onScaleModeChange()">
+        <option value="linear">Linear</option>
+        <option value="logY">Log Y</option>
+        <option value="logX">Log X</option>
+        <option value="loglog">Log-Log</option>
+      </select>
+    </label>
+    <div class="sep"></div>
+    <label>View:
+      <button type="button" id="zoomInBtn" onclick="zoomIn()" title="Zoom in ~20% (about center)">+</button>
+      <button type="button" id="zoomOutBtn" onclick="zoomOut()" title="Zoom out ~25% (about center)">-</button>
+      <button type="button" id="panLeftBtn" onclick="panLeft()" title="Pan left 15% of the visible span">&#8592;</button>
+      <button type="button" id="panRightBtn" onclick="panRight()" title="Pan right 15% of the visible span">&#8594;</button>
+      <button type="button" id="fitBtn" onclick="fitChart()" title="Reset both axes to their full auto-range">Fit</button>
+    </label>
+    <div class="sep"></div>
     <label>Start:
-      <input type="text" id="tStartInput" value="0" size="8">
+      <input type="text" id="tStartInput" value="" size="8" placeholder="auto">
     </label>
     <label>End:
-      <input type="text" id="tEndInput" value="{{T_END_MS}}m" size="8" placeholder="e.g. 50m">
+      <input type="text" id="tEndInput" value="" size="8" placeholder="auto">
+    </label>
+    <label>Step:
+      <input type="text" id="tStepInput" value="" size="6" placeholder="auto" title="TRAN time step (e.g. 0.5m, 1u). Blank uses the ngspice default.">
     </label>
     <button onclick="applyTimeRange()">Apply</button>
     <div class="sep"></div>
@@ -75,6 +110,8 @@
   </div>
 
   {{WARN_BANNER}}
+  <div id="scaleWarn" class="warn-banner" style="display:none"></div>
+  <div id="uiNote" class="warn-banner error" style="display:none"></div>
 
   <div class="slider-panel" id="sliderPanel">
     <h3>Component Values <span id="sliderLoading"></span></h3>
@@ -84,7 +121,10 @@
 
   <div class="layout">
     <div class="middle">
-      <div class="chart-wrap" id="chart"></div>
+      <div class="chart-wrap" id="chart">
+        <div id="chartRoot"></div>
+        <div id="simOverlay"><span class="slider-loading" style="margin-right:8px"></span>Simulating&hellip;</div>
+      </div>
       <div class="right">
         <h3>Signals</h3>
         <div class="signal-list">
@@ -101,247 +141,999 @@
     </div>
   </div>
 
+  <script>{{SCALE_MODE_JS}}</script>
 <script>
 (function() {
   var probes = {{PROBES_JSON}};
-
-  var PALETTE = [
-    "#1f77b4","#d62728","#2ca02c","#ff7f0e","#9467bd",
-    "#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf",
-    "#393b79","#637939","#8c6d31","#843c39","#7b4178",
-    "#3182bd","#31a354","#756bb1","#636363","#d6616b",
-  ];
-
   var timeData = {{TIME_JSON}};
   var xLabel = "{{X_AXIS_LABEL}}";
-  var timeMs = timeData;
+  var analysisType = "{{ANALYSIS_TYPE}}";
+  var COMPONENTS = {{COMPONENTS_JSON}};
+  var SIM_SERVER = "http://localhost:3777";
+  console.info("[sim-viewer] build: zoom-yrefit-wheelfix-opbanner-grab-2026-08-09");
 
-  var allTraces = [];
-  var visible = [];
+  // -----------------------------------------------------------------------
+  // Scale-mode state — the shared lookup/gating logic is injected into this
+  // page as the scaleMode global above (and unit-tested in scaleMode.test.ts).
+  // Scale mode persists across live setData() updates; it resets to the new
+  // analysis type's default only when the user switches analysis types.
+  // -----------------------------------------------------------------------
+  var currentMode = scaleMode.defaultScaleFor(analysisType);
+  var chart = null;
+  var currentU = null;
 
-  function traceMode(len) { return len > 1 ? "lines" : "lines+markers"; }
-  function makeTrace(analysisType, x, probe, i, visible) {
-    var isOp = analysisType === "op";
-    if (isOp) {
-      return { x: [probe.name], y: [probe.values[0]], name: probe.name, type: "bar", visible: true };
+  // In-flight request tracking for the pending indicator. Multiple concurrent
+  // simulations (analysis switch + slider debounce) each increment the count,
+  // and the spinner/overlay only clears when all of them have settled.
+  var pendingCount = 0;
+  function setPending(on) {
+    pendingCount += on ? 1 : -1;
+    if (pendingCount < 0) pendingCount = 0;
+    var loading = document.getElementById("sliderLoading");
+    var overlay = document.getElementById("simOverlay");
+    if (loading) loading.innerHTML = pendingCount > 0 ? '<span class="slider-loading"></span>' : "";
+    if (overlay) overlay.style.display = pendingCount > 0 ? "flex" : "none";
+  }
+
+  // Transient user-facing notice (e.g. a failed analysis switch). Clears on the
+  // next successful render; scale-mode gating uses #scaleWarn instead.
+  function showUiNote(msg) {
+    var note = document.getElementById("uiNote");
+    note.textContent = msg;
+    note.style.display = "block";
+  }
+  function clearUiNote() {
+    var note = document.getElementById("uiNote");
+    if (note) note.style.display = "none";
+  }
+
+  // Value formatting mirrors simulator/formatNumbers.ts (formatEng): the
+  // epsilon clamp is display-only, raw data passed to uPlot is never mutated.
+  function formatEngVal(v) {
+    if (v == null || !isFinite(v)) return "\u2014";
+    var a = Math.abs(v);
+    if (a >= 1e9) return (v / 1e9).toFixed(3) + "G";
+    if (a >= 1e6) return (v / 1e6).toFixed(3) + "M";
+    if (a >= 1e3) return (v / 1e3).toFixed(3) + "k";
+    if (a >= 1) return v.toFixed(3);
+    if (a >= 1e-3) return (v * 1e3).toFixed(3) + "m";
+    if (a >= 1e-6) return (v * 1e6).toFixed(3) + "u";
+    if (a >= 1e-9) return (v * 1e9).toFixed(3) + "n";
+    if (a >= 1e-12) return (v * 1e12).toFixed(3) + "p";
+    return "0";
+  }
+
+  function axisTickValues(self, ticks) {
+    // uPlot nulls-out minor ticks on log axes via its tick filter; render those
+    // as blank instead of an em-dash so only the "nice" ticks (decades, 2s, 5s)
+    // are labeled.
+    var out = new Array(ticks.length);
+    for (var i = 0; i < ticks.length; i++) {
+      var t = ticks[i];
+      out[i] = t == null || !isFinite(t) ? "" : formatEngVal(t);
     }
+    return out;
+  }
+
+  function makeSeries(probe, isBar) {
     return {
-      x: x, y: probe.values, name: probe.name, type: "scatter",
-      mode: traceMode(x.length),
-      line: { color: PALETTE[i % PALETTE.length], width: 1.5 },
-      visible: visible !== undefined ? visible : true,
+      label: probe.name,
+      stroke: probe.color,
+      // Phase (deg) traces share the Y axis with magnitude (dB) traces but span
+      // a much wider range (-180..0), so they are hidden by default — otherwise
+      // a checked phase trace stretches the axis and crushes the dB resolution.
+      show: probe.type !== "phase",
+      width: isBar ? 1.2 : 1.5,
+      fill: isBar ? probe.color : null,
+      paths: isBar ? uPlot.paths.bars() : undefined,
+      value: function (u, v) { return formatEngVal(v); },
     };
   }
-  probes.forEach(function(p, idx) {
-    allTraces.push(makeTrace("{{ANALYSIS_TYPE}}", timeMs, p, idx));
-    visible.push(true);
-  });
 
-  var layout = buildLayout("{{ANALYSIS_TYPE}}", xLabel);
-
-  var config = {
-    responsive: true,
-    displayModeBar: true,
-    scrollZoom: true,
-    modeBarButtonsToRemove: ["lasso2d", "select2d"],
-    displaylogo: false,
-  };
-
-  Plotly.newPlot("chart", allTraces, layout, config);
-
-  // Signal table
-  var tbody = document.getElementById("signalTableBody");
-  probes.forEach(function(p, idx) {
-    var vals = p.values;
-    var max = -Infinity, min = Infinity;
-    for (var i = 0; i < vals.length; i++) {
-      if (vals[i] > max) max = vals[i];
-      if (vals[i] < min) min = vals[i];
+  // OP plots one bar per probe at the probe's own index (probe names label the
+  // x-axis); the server returns a single x=[0], which stacks every bar at x=0.
+  // Normalize the x-axis to per-probe indices everywhere (data, gating, scale
+  // floor) so the bars sit side by side.
+  function normalizeX(atype, x, probes) {
+    if (atype === "op" && probes && probes.length) {
+      var idxs = [];
+      for (var i = 0; i < probes.length; i++) idxs.push(i);
+      return idxs;
     }
-    if (!isFinite(max)) max = 0;
-    if (!isFinite(min)) min = 0;
+    return x;
+  }
 
-    var tr = document.createElement("tr");
-    tr.innerHTML =
-      '<td class="color-cell"><span class="swatch" style="background:' + p.color + '"></span></td>' +
-      '<td><label><input type="checkbox" data-idx="' + idx + '" checked onchange="toggleTrace(this)"> ' + p.name + '</label></td>' +
-      '<td>' + p.type + '</td>' +
-      '<td>' + max.toFixed(3) + '</td>' +
-      '<td>' + min.toFixed(3) + '</td>';
-    tbody.appendChild(tr);
-  });
+  // uPlot AlignedData = [xs, y0, y1, ...]; series[0] is the x scale.
+  // OP does not build a chart (it renders a value table, see renderOpValueTable);
+  // FFT renders harmonic magnitudes as an ordinary line series, not bars.
+  function buildChartState(atype, x, probes) {
+    var isBar = false;
+    var series = [{ label: xLabel || "x", value: function (u, v) { return formatEngVal(v); } }];
+    var data = [x.slice()];
+    for (var j = 0; j < probes.length; j++) {
+      series.push(makeSeries(probes[j], isBar));
+      data.push(probes[j].values.slice());
+    }
+    return { series: series, data: data };
+  }
 
-  window.toggleTrace = function(cb) {
-    var idx = parseInt(cb.getAttribute("data-idx"));
-    visible[idx] = cb.checked;
-    var vis = visible.map(function(v) { return v ? true : "legendonly"; });
-    Plotly.restyle("chart", { visible: vis });
-  };
-
-  window.applyTimeRange = function() {
-    var tEndRaw = document.getElementById("tEndInput").value.trim();
-    if (!tEndRaw) return;
-    // Re-run simulation with updated duration (raw ngspice string, e.g. "50m")
-    var curAnalysis = document.getElementById("analysisType").value;
-    var loading = document.getElementById("sliderLoading");
-    loading.innerHTML = '<span class="slider-loading"></span>';
-
-    var body = {
-      fixture: "{{DESIGN_ID}}",
-      components: getSliderValues(),
-      analysisType: curAnalysis,
-      duration: tEndRaw,
+  function currentSize() {
+    var r = document.getElementById("chart").getBoundingClientRect();
+    return {
+      width: Math.max(320, Math.floor(r.width - 8)),
+      height: Math.max(280, Math.floor(r.height - 8)),
     };
+  }
 
-    fetch(SIM_SERVER + "/simulate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      loading.innerHTML = "";
-      if (!data.ok) {
-        console.error("Time range simulation error:", data.error);
-        loading.textContent = "Error: " + data.error;
-        return;
+  // uPlot 1.6.31 binds a scale's range function at construction from distr, so
+  // mutating scales.distr afterwards (the old applyScaleMode approach) is
+  // silently ignored — a mutated log distr over a stale linear range computes
+  // log10(0) = -inf and renders a blank chart. Provide explicit dynamic range
+  // fns that dispatch on the live distr and re-apply the t=0 log-x floor on
+  // every re-range, so both construction AND live setData() updates are correct.
+  function makeScaleX() {
+    var cfg = scaleMode.scaleConfigFor(currentMode);
+    return {
+      distr: cfg.xDistr,
+      time: false,
+      auto: true,
+      range: function (u, dataMin, dataMax) {
+        if (dataMin == null && dataMax == null) return [null, null];
+        // uPlot re-runs this fn for EVERY setScale() (drag, wheel, buttons),
+        // passing the requested range as dataMin/dataMax. rangeNum pads AND
+        // snaps to 0.1-multiples, which would silently expand every zoom/pan
+        // target (a zoom to [0.04,1.96] snapped back to the full [-0.2,2.2]).
+        // So only pad/snap when the input is the RAW data extent (true auto
+        // scale / Fit); an explicit user range is returned verbatim.
+        var isAuto = isFullDataExtent(u, "x", dataMin, dataMax);
+        if (u.scales.x.distr === 3) {
+          var lo = dataMin;
+          var xs = u.data && u.data[0];
+          var floor = xs && xs.length ? scaleMode.smallestPositive(xs) : null;
+          if (floor !== null && (lo == null || lo <= 0)) lo = floor;
+          // Snap to whole decades ONLY for a full auto-scale; an explicit
+          // drag/button/wheel zoom keeps its own span so users can actually
+          // zoom inside a decade (fullMags would otherwise re-snap every zoom
+          // to a full decade range).
+          return isAuto ? uPlot.rangeLog(lo, dataMax, u.scales.x.log || 10, true) : [lo, dataMax];
+        }
+        return isAuto ? uPlot.rangeNum(dataMin, dataMax, 0.1, false) : [dataMin, dataMax];
+      },
+    };
+  }
+  function makeScaleY() {
+    var cfg = scaleMode.scaleConfigFor(currentMode);
+    return {
+      distr: cfg.yDistr,
+      auto: true,
+      range: function (u, dataMin, dataMax) {
+        if (dataMin == null && dataMax == null) return [null, null];
+        // Always pad/snap. Unlike x, an EXPLICIT user y-range never reaches
+        // this fn (uPlot skips non-auto pending scales in "range independent
+        // scales"), so the inputs here are always data extents — including the
+        // visible-window extent uPlot computes for y when x is zoomed. An
+        // "exact" branch here would collapse a flat y trace to a single value.
+        if (u.scales.y.distr === 3) {
+          // Guard against a 0/negative data floor (log10(0) = -inf blanks the
+          // axis); floor to the smallest positive Y across all series.
+          var lo = dataMin;
+          if (lo == null || lo <= 0) {
+            var floor = null;
+            for (var s = 1; s < u.data.length && floor === null; s++) {
+              var p = scaleMode.smallestPositive(u.data[s]);
+              if (p !== null && (floor === null || p < floor)) floor = p;
+            }
+            if (floor !== null) lo = floor;
+          }
+          return uPlot.rangeLog(lo, dataMax, u.scales.y.log || 10, true);
+        }
+        return uPlot.rangeNum(dataMin, dataMax, 0.05, true);
+      },
+    };
+  }
+
+  // uPlot 1.6.31 has no native panning or wheel zoom (only drag-select via
+  // cursor.drag) — implement both as small plugins.
+  // Pan: click-and-drag with ANY mouse button (left/middle/right), anchored via
+  // posToVal so it works on linear AND logarithmic axes. Left-drag pan replaces
+  // uPlot's native drag-select zoom; zoom remains via the wheel and the
+  // +/- toolbar buttons.
+  var windowPanListenersBound = false;
+  function makePanPlugin() {
+    var panning = false, sx = 0, sy = 0, sMinX = 0, sMaxX = 0, sMinY = 0, sMaxY = 0;
+    return {
+      hooks: {
+        ready: function (u) {
+          currentU = u;
+          u.over.style.cursor = "grab";
+          u.over.addEventListener("mousedown", function (e) {
+            // Any button click-and-drag pans; left-drag is free because uPlot's
+            // native drag-select zoom is disabled (cursor.drag = false).
+            if (e.button !== 0 && e.button !== 1 && e.button !== 2) return;
+            e.preventDefault();
+            var rect = u.over.getBoundingClientRect();
+            sx = e.clientX - rect.left;
+            sy = e.clientY - rect.top;
+            sMinX = u.scales.x.min; sMaxX = u.scales.x.max;
+            sMinY = u.scales.y.min; sMaxY = u.scales.y.max;
+            panning = true;
+            u.over.style.cursor = "grabbing";
+          });
+          u.over.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+          if (windowPanListenersBound) return;
+          windowPanListenersBound = true;
+          window.addEventListener("mousemove", function (e) {
+            if (!panning) return;
+            var u2 = currentU;
+            if (!u2) return;
+            var rect = u2.over.getBoundingClientRect();
+            var cx = e.clientX - rect.left;
+            var cy = e.clientY - rect.top;
+            var dx = u2.posToVal(sx, "x") - u2.posToVal(cx, "x");
+            var dy = u2.posToVal(sy, "y") - u2.posToVal(cy, "y");
+            u2.setScale("x", { min: sMinX + dx, max: sMaxX + dx });
+            u2.setScale("y", { min: sMinY + dy, max: sMaxY + dy });
+          });
+          window.addEventListener("mouseup", function () {
+            panning = false;
+            if (currentU && currentU.over) currentU.over.style.cursor = "grab";
+          });
+        },
+      },
+    };
+  }
+
+  function wheelZoomPlugin() {
+    return {
+      hooks: {
+        ready: function (u) {
+          u.over.addEventListener("wheel", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var rect = u.over.getBoundingClientRect();
+            var left = e.clientX - rect.left;
+            var top = e.clientY - rect.top;
+            var xc = u.posToVal(left, "x");
+            var yc = u.posToVal(top, "y");
+            var x0 = u.scales.x.min, x1 = u.scales.x.max;
+            var y0 = u.scales.y.min, y1 = u.scales.y.max;
+            var f = Math.pow(1.15, Math.abs(e.deltaY) / 100);
+            if (e.deltaY <= 0) f = 1 / f;
+            // Zoom about the cursor. zoomRangeAbout does the span math in the
+            // scale's own space (decades for log, values for linear), so wheel
+            // zoom is correct on both axis types; the setScale hook enforces
+            // the Issue-1 minimum span.
+            var nx = zoomRangeAbout(u, "x", x0, x1, xc, f);
+            var ny = zoomRangeAbout(u, "y", y0, y1, yc, f);
+            // zoomRangeAbout returns [min, max]; setScale requires {min, max}.
+            // Passing the bare array silently resets the scale to auto instead
+            // of zooming, so wrap it before handing it over.
+            u.setScale("x", { min: nx[0], max: nx[1] });
+            u.setScale("y", { min: ny[0], max: ny[1] });
+          }, { passive: false });
+        },
+      },
+    };
+  }
+
+  // -----------------------------------------------------------------------
+  // Zoom / pan / fit controls + a minimum-span clamp.
+  //
+  // uPlot 1.6.31 has NO protection against collapsing a scale to a sub-pixel
+  // span. cursor.drag applies the drag-selected range explicitly (setScale ->
+  // pendScales -> _calcScales uses explicit min/max; the scale range fn pads a
+  // linear span by only 10% of ITSELF, so a 1-2px drag on a wide plot blanks
+  // the canvas). Also, uPlot's internal dblclick handler only resets X (via
+  // autoScaleX, raw data extent with no padding/decade-snap) and it NEVER fires
+  // the "dblclick" hook for a lone chart (pubSync skips self), so the template's
+  // hooks.dblclick: [u.setData(u.data)] entry was dead code.
+  //
+  // We clamp via the "setScale" hook, which fires after every committed scale
+  // change (drag-zoom, wheel zoom, buttons, auto-range alike), and reset via
+  // setScale to the scale's own range fn (the exact padded/decade-snapped
+  // range a fresh construction produces).
+  // -----------------------------------------------------------------------
+  var MIN_SPAN_FRAC = 0.01;      // a zoomed span may never drop below 1% of the full auto-span
+  var clampScheduled = {};       // re-entrancy guard per scale key
+
+  function isLogDistr(u, k) {
+    var sc = u.scales[k];
+    return !!(sc && sc.distr === 3);
+  }
+
+  // Raw data extent (min..max) for a scale, skipping nulls/non-finite values.
+  function rawDataRange(u, k) {
+    var xs = u.data && u.data[0];
+    if (!xs || xs.length === 0) return null;
+    var lo = Infinity, hi = -Infinity, v;
+    if (k === "x") {
+      for (var i = 0; i < xs.length; i++) {
+        v = xs[i];
+        if (v == null || !isFinite(v)) continue;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
       }
-      var newLayout = buildLayout(data.analysisType, data.xAxisLabel);
-      var newTraces = data.probes.map(function(p, i) {
-        return makeTrace(data.analysisType, data.xValues, p, i, visible[i]);
+    } else {
+      for (var s = 1; s < u.data.length; s++) {
+        var row = u.data[s];
+        if (!row) continue;
+        for (var j = 0; j < row.length; j++) {
+          v = row[j];
+          if (v == null || !isFinite(v)) continue;
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+      }
+    }
+    return lo === Infinity ? null : [lo, hi];
+  }
+
+  // The full auto-range for scale k in the CURRENT mode, via the bound range
+  // fn (padding + log floor + decade snap included) — what a fresh
+  // construction/auto-scale would produce. null when unavailable.
+  function fullAutoRange(u, k) {
+    var sc = u.scales[k];
+    if (!sc || typeof sc.range !== "function") return null;
+    var raw = rawDataRange(u, k);
+    if (!raw) return null;
+    return sc.range(u, raw[0], raw[1]);
+  }
+
+  // Is [lo, hi] exactly the raw data extent? True only for a full auto-scale,
+  // never for a sub-range user zoom.
+  function isFullDataExtent(u, k, lo, hi) {
+    var raw = rawDataRange(u, k);
+    return raw !== null && lo === raw[0] && hi === raw[1];
+  }
+
+  // Span of [vmin, vmax] in the scale's own space: value space for linear,
+  // decades for log. Returns 0 for degenerate/invalid ranges.
+  function scaleSpan(u, k, vmin, vmax) {
+    if (vmin == null || vmax == null || !isFinite(vmin) || !isFinite(vmax)) return 0;
+    if (isLogDistr(u, k)) {
+      if (vmin <= 0 || vmax <= 0) return 0;
+      return Math.log10(vmax) - Math.log10(vmin);
+    }
+    return vmax - vmin;
+  }
+
+  // Midpoint of [vmin, vmax] in the scale's own space (geometric mid for log).
+  function scaleMid(u, k, vmin, vmax) {
+    if (isLogDistr(u, k)) return (Math.log10(Math.max(vmin, 1e-300)) + Math.log10(Math.max(vmax, 1e-300))) / 2;
+    return (vmin + vmax) / 2;
+  }
+
+  // [center +- halfSpan] (scale space) -> [min, max] in value space.
+  function centerHalfToRange(u, k, center, halfSpan) {
+    if (isLogDistr(u, k)) return [Math.pow(10, center - halfSpan), Math.pow(10, center + halfSpan)];
+    return [center - halfSpan, center + halfSpan];
+  }
+
+  // Expand [vmin, vmax] around its midpoint until its scale-space span reaches
+  // minSpan (used by the clamp when a drag/wheel/button zoom goes too narrow).
+  function expandToMinSpan(u, k, vmin, vmax, minSpan) {
+    var s = scaleSpan(u, k, vmin, vmax);
+    if (s >= minSpan) return [vmin, vmax];
+    var mid = scaleMid(u, k, vmin, vmax);
+    return centerHalfToRange(u, k, mid, minSpan / 2);
+  }
+
+  // Wired into the "setScale" hook: runs after uPlot commits a scale change.
+  // If the new span is under the floor, schedule a corrective setScale for the
+  // next microtask — issuing setScale *during* the current commit would be
+  // swallowed by the commit already in flight.
+  function clampScaleFromHook(u, k) {
+    if (k !== "x" && k !== "y") return;
+    if (clampScheduled[k]) return;
+    var sc = u.scales[k];
+    if (!sc || sc.min == null || sc.max == null) return;
+    var full = fullAutoRange(u, k);
+    if (!full) return;
+    var fs = scaleSpan(u, k, full[0], full[1]);
+    if (!(fs > 0)) return;
+    var cs = scaleSpan(u, k, sc.min, sc.max);
+    if (cs < fs * MIN_SPAN_FRAC) {
+      clampScheduled[k] = true;
+      var fixed = expandToMinSpan(u, k, sc.min, sc.max, fs * MIN_SPAN_FRAC);
+      queueMicrotask(function () {
+        clampScheduled[k] = false;
+        if (currentU === u) u.setScale(k, { min: fixed[0], max: fixed[1] });
       });
-      while (visible.length < newTraces.length) visible.push(true);
-      Plotly.react("chart", newTraces, newLayout, config);
-      document.getElementById("netlistPre").textContent = data.netlist;
-    })
-    .catch(function(e) {
-      loading.innerHTML = "";
-      console.error("Time range simulation error:", e);
+    }
+  }
+
+  // Reset the x scale to its full auto-range. Pass the RAW data extent: the
+  // x range fn is re-applied by uPlot's _calcScales (series[0] path), so raw
+  // min/max yield exactly the padded/decade-snapped construction range (a
+  // pre-padded range would be padded a second time).
+  function fitX(u) {
+    u = u || currentU;
+    if (!u) return;
+    var xr = rawDataRange(u, "x");
+    if (xr) u.setScale("x", { min: xr[0], max: xr[1] });
+  }
+
+  // Reset the y scale to its full auto-range. Explicit y ranges bypass the y
+  // range fn (it only runs for auto scales), so nulls re-trigger the auto path.
+  function fitY(u) {
+    u = u || currentU;
+    if (!u) return;
+    u.setScale("y", { min: null, max: null });
+  }
+
+  function fitChart(u) {
+    u = u || currentU;
+    if (!u) return;
+    fitX(u);
+    fitY(u);
+  }
+  window.fitChart = fitChart;
+
+  // Log-aware zoom of scale k's [min,max] by `factor` (span multiplier: <1
+  // zooms in, >1 zooms out) about `center` in value space. Log axes zoom in
+  // decade-space so the math is correct on both scale types.
+  function zoomRangeAbout(u, k, min, max, center, factor) {
+    var s = scaleSpan(u, k, min, max);
+    if (!(s > 0)) return [min, max];
+    var c = isLogDistr(u, k) ? Math.log10(Math.max(center, 1e-300)) : center;
+    return centerHalfToRange(u, k, c, (s * factor) / 2);
+  }
+
+  // Zoom the x axis about its midpoint. Clamped at MIN_SPAN_FRAC of the full
+  // auto-span (zoom-in simply stops shrinking — the setScale hook enforces the
+  // same floor for drag/wheel), and capped at the full range (zoom out enough
+  // and you land on Fit).
+  function zoomChart(factor) {
+    var u = currentU;
+    if (!u || !u.scales.x || u.scales.x.min == null) return;
+    var full = fullAutoRange(u, "x");
+    if (!full) return;
+    var fs = scaleSpan(u, "x", full[0], full[1]);
+    if (!(fs > 0)) return;
+    var s = scaleSpan(u, "x", u.scales.x.min, u.scales.x.max) * factor;
+    if (s < fs * MIN_SPAN_FRAC) s = fs * MIN_SPAN_FRAC;
+    if (s >= fs) { fitX(u); u.setScale("y", { min: null, max: null }); return; }
+    var mid = scaleMid(u, "x", u.scales.x.min, u.scales.x.max);
+    var r = centerHalfToRange(u, "x", mid, s / 2);
+    u.setScale("x", { min: r[0], max: r[1] });
+    // Keep every currently-checked series visible: re-run the y auto-range for
+    // the newly-visible x window so the +/- zoom never silently clips a shown
+    // trace out of the viewport (the scale remains auto, so later pans/zooms
+    // keep re-ranging it).
+    u.setScale("y", { min: null, max: null });
+  }
+
+  // Shift the x axis by `frac` of the current span, then clamp the window
+  // inside the data domain (span stays constant).
+  function panChart(frac) {
+    var u = currentU;
+    if (!u || !u.scales.x || u.scales.x.min == null) return;
+    var full = fullAutoRange(u, "x");
+    if (!full) return;
+    var log = isLogDistr(u, "x");
+    var smin = log ? Math.log10(u.scales.x.min) : u.scales.x.min;
+    var smax = log ? Math.log10(u.scales.x.max) : u.scales.x.max;
+    var fmin = log ? Math.log10(full[0]) : full[0];
+    var fmax = log ? Math.log10(full[1]) : full[1];
+    var s = smax - smin;
+    if (!(s > 0)) return;
+    var shift = s * frac;
+    var lo = smin + shift, hi = smax + shift;
+    if (fmax - fmin >= s) {
+      if (lo < fmin) { lo = fmin; hi = lo + s; }
+      if (hi > fmax) { hi = fmax; lo = hi - s; }
+    } else {
+      var mid = (fmin + fmax) / 2;
+      lo = mid - s / 2; hi = mid + s / 2;
+    }
+    u.setScale("x", { min: log ? Math.pow(10, lo) : lo, max: log ? Math.pow(10, hi) : hi });
+  }
+
+  window.zoomIn = function () { zoomChart(0.8); };     // ~20% closer
+  window.zoomOut = function () { zoomChart(1.25); };   // ~25% wider
+  window.panLeft = function () { panChart(-0.15); };   // 15% of the span, left
+  window.panRight = function () { panChart(0.15); };
+
+  // Runs once the first commit lands (u.over exists): keep a stable chart ref
+  // for the toolbar buttons and add a dblclick reset. uPlot's built-in dblclick
+  // handler only auto-scales X and never fires the "dblclick" hook for a lone
+  // chart, so the template's old hooks.dblclick entry did nothing — replace it
+  // with a real listener that does a full Fit (both axes). It runs after the
+  // internal x-only handler; both are idempotent.
+  function onChartReady(u) {
+    currentU = u;
+    u.over.addEventListener("dblclick", function () { fitChart(u); });
+  }
+
+  // Root fix for the TRAN-logX tick/gridline clutter: uPlot's default log
+  // splits emit every integer mantissa per decade (1..9) and the GRID renders
+  // ALL of them regardless of pixel space (only labels get thinned by the axis
+  // filter) — a ~9-decade TRAN sweep therefore draws ~80 gridlines. Emit a
+  // space-aware split set instead: decade marks always, plus 2x/5x decade marks
+  // when a decade has enough pixels to label them.
+  function logAxisSplits(u, axisIdx, scaleMin, scaleMax, foundIncr, foundSpace, forceMin) {
+    var sc = u.scales[u.axes[axisIdx].scale];
+    var base = (sc && sc.log) || 10;
+    var lbase = Math.log(base);
+    var lmin = Math.log(Math.max(scaleMin, 1e-300)) / lbase;
+    var lmax = Math.log(Math.max(scaleMax, 1e-300)) / lbase;
+    var dLo = Math.ceil(lmin), dHi = Math.floor(lmax);
+    var out = [];
+    if (dLo > dHi) { out.push(Math.pow(base, dLo)); return out; }
+    var bbox = u.bbox;
+    var plotDim = bbox && (axisIdx === 0 ? bbox.width : bbox.height);
+    var pxPerDecade = plotDim > 0 ? plotDim / (dHi - dLo) : 0;
+    // Wide decades earn 2x/5x marks; a sub/single-decade window always gets
+    // them so the axis isn't left with a lone tick.
+    var sub = dHi - dLo <= 1 ? [2, 5] : pxPerDecade >= 34 ? [2, 5] : pxPerDecade >= 20 ? [5] : [];
+    for (var d = dLo; d <= dHi; d++) {
+      var m = Math.pow(base, d);
+      out.push(m);
+      for (var j = 0; j < sub.length; j++) out.push(sub[j] * m);
+    }
+    return out.filter(function (v) { return v >= scaleMin && v <= scaleMax; });
+  }
+
+  function buildSignalTable(probes) {
+    var tbody = document.getElementById("signalTableBody");
+    tbody.innerHTML = "";
+    probes.forEach(function (p, idx) {
+      var vals = p.values;
+      var max = -Infinity, min = Infinity;
+      for (var i = 0; i < vals.length; i++) {
+        if (vals[i] > max) max = vals[i];
+        if (vals[i] < min) min = vals[i];
+      }
+      if (!isFinite(max)) max = 0;
+      if (!isFinite(min)) min = 0;
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        '<td class="color-cell"><span class="swatch" style="background:' + p.color + '"></span></td>' +
+        '<td><label><input type="checkbox" data-idx="' + idx + '"' + (p.type === "phase" ? "" : " checked") + ' onchange="toggleTrace(this)"> ' + p.name + '</label></td>' +
+        '<td>' + p.type + '</td>' +
+        '<td>' + max.toFixed(3) + '</td>' +
+        '<td>' + min.toFixed(3) + '</td>';
+      tbody.appendChild(tr);
     });
+  }
+
+  // Rebuild the scale-mode dropdown against the current data. Any log option
+  // is disabled (and explained via the scaleWarn banner) when the gating in
+  // scaleMode.js rejects it; if the active mode becomes unusable we fall back
+  // to Linear.
+  function refreshScaleOptions(atype, x, probes) {
+    var sel = document.getElementById("scaleMode");
+    var banner = document.getElementById("scaleWarn");
+    if (atype === "op") {
+      // OP renders a value table with no chart/axes, so scale-mode gating (and
+      // its "Log X floored / Log Y disabled" warnings) is meaningless. Hide the
+      // warning banner and disable the dropdown instead of showing stale
+      // warnings for a chart that does not exist.
+      sel.disabled = true;
+      banner.style.display = "none";
+      return;
+    }
+    sel.disabled = false;
+    var yFlat = [];
+    for (var i = 0; i < probes.length; i++) {
+      var vals = probes[i].values;
+      for (var j = 0; j < vals.length; j++) yFlat.push(vals[j]);
+    }
+    var r = scaleMode.restrictedScaleOptions(atype, x, yFlat);
+    sel.innerHTML = "";
+    for (var k = 0; k < r.options.length; k++) {
+      var o = r.options[k];
+      var opt = document.createElement("option");
+      opt.value = o.value;
+      opt.textContent = o.label;
+      opt.disabled = o.disabled;
+      if (o.value === currentMode) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    if (sel.value !== currentMode) {
+      // The active scale mode is not usable for this data — fall back to Linear.
+      // Rebuild rather than mutating distr (which uPlot 1.6.31 ignores).
+      currentMode = "linear";
+      sel.value = "linear";
+      renderChart(analysisType, x, probes);
+    }
+    if (r.message) {
+      banner.textContent = "\u26a0 " + r.message;
+      banner.style.display = "block";
+    } else {
+      banner.style.display = "none";
+    }
+  }
+
+  // Hover tooltip: uPlot 1.6.31 has no built-in floating tooltip. The internal
+  // cursor fires the "setCursor" hook on every move (with u.cursor.idx/left/top
+  // populated), so the tooltip renders beside the crosshair from that hook.
+  var cursorTip = null;
+  function ensureCursorTip() {
+    if (!cursorTip) {
+      cursorTip = document.createElement("div");
+      cursorTip.id = "uplotTip";
+      cursorTip.style.cssText = "position:absolute;pointer-events:none;z-index:9;background:rgba(33,33,33,.94);color:#f0f0f0;font:11px ui-monospace,Menlo,Consolas,monospace;line-height:1.5;padding:6px 9px;border-radius:4px;display:none;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.3);";
+      var over = document.querySelector("#chartRoot .u-over");
+      (over || document.getElementById("chartRoot")).appendChild(cursorTip);
+    }
+    return cursorTip;
+  }
+  function hideCursorTip() {
+    if (cursorTip) cursorTip.style.display = "none";
+  }
+  function updateCursorTooltip(u) {
+    var c = u.cursor;
+    if (!c || c.idx == null || c.idx < 0 || c.left < 0) { hideCursorTip(); return; }
+    var tip = ensureCursorTip();
+    var idx = c.idx, left = c.left, top = c.top;
+    var html = "<b>" + formatEngVal(u.data[0][idx]) + "</b>";
+    for (var s = 1; s < u.data.length; s++) {
+      var v = u.data[s][idx];
+      var label = u.series[s] && u.series[s].label ? u.series[s].label : "s" + s;
+      html += "<br>" + label + ": " + (v == null || !isFinite(v) ? "\u2014" : formatEngVal(v));
+    }
+    tip.innerHTML = html;
+    tip.style.display = "block";
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    var x = left + 14, y = top - h - 12;
+    if (x + w > u.over.clientWidth) x = left - w - 14;
+    if (y < 4) y = top + 16;
+    tip.style.left = Math.round(x) + "px";
+    tip.style.top = Math.round(y) + "px";
+  }
+
+  // OP analysis is a single DC operating point per probe — a bar chart is the
+  // wrong shape, so render a simple value table (Signal / Value / Unit) into the
+  // chart area instead of a uPlot chart.
+  function probeUnit(p) {
+    if (p.type === "current") return "A";
+    if (p.type === "magnitude") return "V";
+    return "V";
+  }
+  function renderOpValueTable(probes) {
+    var root = document.getElementById("chartRoot");
+    var html = '<div class="op-table-wrap"><table class="op-table">' +
+      "<thead><tr><th>Signal</th><th>Value</th><th>Unit</th></tr></thead><tbody>";
+    for (var i = 0; i < probes.length; i++) {
+      var p = probes[i];
+      var v = p.values && p.values.length ? p.values[0] : null;
+      html += '<tr><td class="sig"><span class="swatch" style="background:' + p.color + '"></span>' + p.name + "</td>" +
+        "<td>" + (v == null || !isFinite(v) ? "\u2014" : formatEngVal(v)) + "</td>" +
+        "<td>" + probeUnit(p) + "</td></tr>";
+    }
+    html += "</tbody></table></div>";
+    root.innerHTML = html;
+  }
+
+  function renderChart(atype, x, probes) {
+    analysisType = atype;
+    clearUiNote();
+    x = normalizeX(atype, x, probes);
+    // uPlot clears the root element it mounts into, so the chart target must
+    // be a dedicated div (chartRoot) — never #chart, which also holds the
+    // simOverlay pending indicator as a sibling.
+    var root = document.getElementById("chartRoot");
+    root.innerHTML = "";
+    cursorTip = null;
+    if (!x || x.length === 0) {
+      root.innerHTML = '<div style="padding:20px;color:#999;font-size:12px">No simulation data for this analysis type.</div>';
+      chart = null;
+      return;
+    }
+    if (atype === "op") {
+      // OP = one DC value per probe: show a value table instead of a chart.
+      chart = null;
+      renderOpValueTable(probes);
+      buildSignalTable(probes);
+      refreshScaleOptions(atype, x, probes);
+      populateTimeRange(atype, x, probes);
+      return;
+    }
+    var st = buildChartState(atype, x, probes);
+    var cfg = scaleMode.scaleConfigFor(currentMode);
+    var size = currentSize();
+    chart = new uPlot({
+      width: size.width,
+      height: size.height,
+      scales: { x: makeScaleX(), y: makeScaleY() },
+      series: st.series,
+      axes: [
+        {
+          scale: "x",
+          label: xLabel,
+          stroke: "#555",
+          grid: { stroke: "#e0e0e0" },
+          // OP plots one bar per probe; label the x ticks with probe names
+          // instead of indices. Defined at construction (not assigned after)
+          // because uPlot 1.6.31 binds axis behavior from opts and a post-hoc
+          // chart.redraw() before the construction commit clobbers the pending
+          // x auto-range with {min: null, max: null} (redraw -> setScale("x",
+          // null, null)), leaving the x scale permanently unranged.
+          values: atype === "op"
+            ? function (self, raw) {
+                var out = new Array(raw.length);
+                for (var i = 0; i < raw.length; i++) {
+                  var idx = Math.round(raw[i]);
+                  // Only label integer-index ticks; fractional splits (e.g. the
+                  // midpoint between two bars) would repeat adjacent names.
+                  var p = Math.abs(raw[i] - idx) < 1e-6 ? probes[idx] : null;
+                  out[i] = p ? p.name : "";
+                }
+                return out;
+              }
+            : axisTickValues,
+          // Space-aware log splits (root fix for the dense log gridlines);
+          // linear axes keep uPlot's default splits by leaving this undefined.
+          splits: cfg.xDistr === 3 ? logAxisSplits : undefined,
+          size: 52,
+          font: "11px system-ui, -apple-system, sans-serif",
+        },
+        { scale: "y", stroke: "#555", grid: { stroke: "#e0e0e0" }, values: axisTickValues, splits: cfg.yDistr === 3 ? logAxisSplits : undefined, size: 56, font: "11px system-ui, -apple-system, sans-serif" },
+      ],
+      cursor: { show: true, drag: false },
+      select: { show: false },
+      legend: { show: true, live: true },
+      hooks: {
+        setScale: [clampScaleFromHook],
+        setCursor: [updateCursorTooltip],
+        ready: [onChartReady],
+      },
+      plugins: [makePanPlugin(), wheelZoomPlugin()],
+    }, st.data, root);
+
+    // Re-apply the scale mode after a (re)build: sets distr (already correct at
+    // construction) and re-renders. The t=0 log-x floor is handled by the
+    // dynamic range fn in makeScaleX, not by mutating scales.x.min.
+    scaleMode.applyScaleMode(chart, currentMode, x);
+    chart.over.addEventListener("mouseleave", hideCursorTip);
+
+    buildSignalTable(probes);
+    refreshScaleOptions(atype, x, probes);
+    populateTimeRange(atype, x, probes);
+    resizeChart();
+  }
+
+  // Live updates reuse the same chart via setData() — never recreated. If the
+  // probe set changes structurally the chart is rebuilt once.
+  function updateChartData(x, probes) {
+    if (analysisType === "op") {
+      // OP renders a value table (chart is null) — rebuild it on every update.
+      renderChart(analysisType, x, probes);
+      return;
+    }
+    if (!chart) return;
+    x = normalizeX(analysisType, x, probes);
+    if (chart.series.length - 1 !== probes.length) {
+      renderChart(analysisType, x, probes);
+      return;
+    }
+    chart.axes[0].label = xLabel;
+    var st = buildChartState(analysisType, x, probes);
+    // If the sweep itself changed (Start/End/Step applied, new sim range), drop
+    // any user zoom and redraw the new data at its full auto-range; otherwise
+    // keep the current view so component-value tweaks don't reset the zoom.
+    var oldX = chart.data && chart.data[0];
+    var xChanged = !oldX || oldX.length !== x.length || oldX[0] !== x[0] || oldX[oldX.length - 1] !== x[x.length - 1];
+    chart.setData(st.data);
+    if (xChanged) fitChart(chart);
+    // The dynamic range fns in makeScaleX/Y dispatch on the live distr, so a
+    // setData() re-range is always correct for the current mode.
+    refreshScaleOptions(analysisType, x, probes);
+    populateTimeRange(analysisType, x, probes);
+  }
+
+  function resizeChart() {
+    if (!chart) return;
+    var size = currentSize();
+    chart.setSize({ width: size.width, height: size.height });
+  }
+
+  // -----------------------------------------------------------------------
+  // Start/End (time-range) controls. These only make sense for time-domain
+  // analyses (TRAN/OP/FFT), where ngspice reports seconds -> displayed ms.
+  // For AC (frequency sweep) and DC (voltage sweep) the x-axis is on a
+  // completely different scale, so the controls are hidden AND no stale
+  // value is forwarded as a `duration` to the server (a stale AC "End of
+  // 1000000" leaked into TRAN as a 1,000,000 ms stop time, hanging ngspice).
+  function isTimeDomainAnalysis(atype) {
+    return atype === "tran";
+  }
+
+  // Show/hide the Start/End/Step controls + the Apply button per analysis type.
+  function toggleTimeRangeVisibility(atype) {
+    var visible = isTimeDomainAnalysis(atype);
+    var els = document.querySelectorAll("#tStartInput,#tEndInput,#tStepInput,button[onclick='applyTimeRange()']");
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      // also hide the <label> wrapping each input
+      if (el.parentElement && el.parentElement.tagName === "LABEL") el.parentElement.style.display = visible ? "" : "none";
+    }
+    if (!visible) {
+      var s = document.getElementById("tStartInput"); if (s) s.value = "";
+      var e = document.getElementById("tEndInput"); if (e) e.value = "";
+      var st = document.getElementById("tStepInput"); if (st) st.value = "";
+    }
+  }
+
+  // After a fresh chart render, auto-populate Start/End from the actual data
+  // range (display units, ms for time-domain) so the inputs reflect reality,
+  // not a value carried over from a prior analysis type.
+  function populateTimeRange(atype, x, probes) {
+    if (!isTimeDomainAnalysis(atype)) { toggleTimeRangeVisibility(atype); return; }
+    toggleTimeRangeVisibility(atype);
+    if (!x || x.length === 0) return;
+    var xs = x.slice();
+    var lo = Math.min.apply(null, xs);
+    var hi = Math.max.apply(null, xs);
+    var s = document.getElementById("tStartInput");
+    var e = document.getElementById("tEndInput");
+    if (s) s.value = formatEngVal(lo);
+    if (e) e.value = formatEngVal(hi);
+  }
+
+  // The Start/End/Step inputs are in DISPLAY units (ms for time-domain), but
+  // ngspice .tran step/stop are SPICE SECONDS. A raw ms number forwarded as-is
+  // would be read as seconds (a 10 ms End became a 10 s simulation). Convert
+  // before sending: ms -> seconds. Returns undefined when unparseable/empty.
+  function msToSpiceSec(v) {
+    var n = parseFloat(String(v == null ? "" : v).trim());
+    return isFinite(n) && n > 0 ? String(n / 1000) : undefined;
+  }
+
+  // -----------------------------------------------------------------------
+  // Toolbar handlers
+  // -----------------------------------------------------------------------
+  window.onScaleModeChange = function () {
+    currentMode = document.getElementById("scaleMode").value;
+    // uPlot 1.6.31 binds each scale's range/axis ticks from distr at
+    // construction, so a scale-mode change rebuilds the chart instead of
+    // mutating distr on the live instance (which uPlot silently ignores).
+    if (chart) renderChart(analysisType, chart.data[0], probes);
   };
 
-  window.toggleGrid = function() {
-    var show = document.getElementById("showGrid").checked;
-    var gc = show ? "#e0e0e0" : "transparent";
-    Plotly.relayout("chart", {
-      "xaxis.gridcolor": gc,
-      "yaxis.gridcolor": gc,
-    });
+  window.toggleTrace = function (cb) {
+    var idx = parseInt(cb.getAttribute("data-idx"));
+    if (chart) chart.setSeries(idx + 1, { show: cb.checked });
   };
 
-  window.toggleLegend = function() {
-    var show = document.getElementById("showLegend").checked;
-    Plotly.relayout("chart", {
-      "showlegend": show,
-    });
+  window.toggleGrid = function () {
+    document.getElementById("chart").classList.toggle("no-grid", !document.getElementById("showGrid").checked);
   };
-  window.toggleNetlist = function() {
+
+  window.toggleLegend = function () {
+    document.getElementById("chart").classList.toggle("no-legend", !document.getElementById("showLegend").checked);
+  };
+
+  window.toggleNetlist = function () {
     var pre = document.getElementById("netlistPre");
     pre.style.display = pre.style.display === "none" ? "block" : "none";
   };
 
-  function buildLayout(analysisType, xLabel) {
-    var isAc = analysisType === "ac" || (xLabel && xLabel.indexOf("Frequency") >= 0);
-    return {
-      margin: { l: 60, r: 20, t: 30, b: 50 },
-      xaxis: {
-        title: xLabel || "Time (ms)",
-        gridcolor: "#e0e0e0",
-        zeroline: true,
-        zerolinecolor: "#bbb",
-        type: isAc ? "log" : "linear",
-        autorange: true,
-      },
-      yaxis: {
-        title: isAc ? "Magnitude (dB) / Phase (deg)" : "Voltage (V)",
-        gridcolor: "#e0e0e0",
-        zeroline: true,
-        zerolinecolor: "#bbb",
-        autorange: true,
-      },
-      legend: { orientation: "h", y: -0.15 },
-      hovermode: "x unified",
-      paper_bgcolor: "#fff",
-      plot_bgcolor: "#fff",
-    };
-  }
+  window.applyTimeRange = function () {
+    var tEndRaw = document.getElementById("tEndInput").value.trim();
+    var tStepRaw = document.getElementById("tStepInput").value.trim();
+    if (!tEndRaw && !tStepRaw) return;
+    runSimulation();
+  };
 
-  window.switchAnalysis = function() {
+  window.switchAnalysis = function () {
     var sel = document.getElementById("analysisType");
     var newType = sel.value;
-    var currentType = "{{ANALYSIS_TYPE}}";
-    if (newType === currentType) return;
+    var oldType = analysisType;
+    if (newType === oldType) return;
 
-    // Re-run simulation with new analysis type via live server
     var oldText = sel.options[sel.selectedIndex].text;
     sel.options[sel.selectedIndex].text = oldText + " (loading...)";
 
-    var tEndRaw = document.getElementById("tEndInput").value.trim();
+    // Don't forward the prior analysis's Start/End as a duration for the new
+    // analysis. A stale AC "End of 1000000" previously leaked as a 1,000,000 ms
+    // TRAN stop time, hanging ngspice for ~13s and leaving the UI stuck on the
+    // old chart (the "red rectangle" was the still-painted prior AC chart).
+    // The new analysis starts at its natural auto-range; renderChart will
+    // re-populate Start/End from the returned data once the request resolves.
+    var tEndRaw = isTimeDomainAnalysis(newType) ? document.getElementById("tEndInput").value.trim() : "";
+    var tStepRaw = isTimeDomainAnalysis(newType) ? document.getElementById("tStepInput").value.trim() : "";
     var body = {
       fixture: "{{DESIGN_ID}}",
       components: getSliderValues(),
       analysisType: newType,
-      duration: tEndRaw || undefined,
+      duration: msToSpiceSec(tEndRaw),
+      timeStep: msToSpiceSec(tStepRaw),
     };
 
+    setPending(true);
     fetch(SIM_SERVER + "/simulate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      setPending(false);
       sel.options[sel.selectedIndex].text = oldText;
       if (!data.ok) {
         console.error("Analysis switch error:", data.error);
-        sel.value = currentType;
+        showUiNote("Analysis switch to " + newType + " failed: " + data.error);
+        sel.value = oldType;
         return;
       }
-
-      currentType = newType;
-      var newLayout = buildLayout(data.analysisType, data.xAxisLabel);
-      var newTraces = data.probes.map(function(p, i) {
-        return makeTrace(data.analysisType, data.xValues, p, i, true);
-      });
-      visible = newTraces.map(function() { return true; });
-
-      Plotly.newPlot("chart", newTraces, newLayout, config);
+      // xLabel must reflect the new analysis (was stale: switching AC->TRAN
+      // kept the axis labeled "Frequency (Hz)"). Scale mode resets to the new
+      // analysis type's default since the axis meaning changes.
+      analysisType = data.analysisType;
+      xLabel = data.xAxisLabel;
+      currentMode = scaleMode.defaultScaleFor(analysisType);
+      renderChart(data.analysisType, data.xValues, data.probes);
       document.getElementById("netlistPre").textContent = data.netlist;
-
-      // Update signal table
-      var tbody = document.getElementById("signalTableBody");
-      tbody.innerHTML = "";
-      data.probes.forEach(function(p, idx) {
-        var vals = p.values;
-        var max = -Infinity, min = Infinity;
-        for (var i = 0; i < vals.length; i++) {
-          if (vals[i] > max) max = vals[i];
-          if (vals[i] < min) min = vals[i];
-        }
-        if (!isFinite(max)) max = 0;
-        if (!isFinite(min)) min = 0;
-        var tr = document.createElement("tr");
-        tr.innerHTML =
-          '<td class="color-cell"><span class="swatch" style="background:' + p.color + '"></span></td>' +
-          '<td><label><input type="checkbox" data-idx="' + idx + '" checked onchange="toggleTrace(this)"> ' + p.name + '</label></td>' +
-          '<td>' + p.type + '</td>' +
-          '<td>' + max.toFixed(3) + '</td>' +
-          '<td>' + min.toFixed(3) + '</td>';
-        tbody.appendChild(tr);
-      });
     })
-    .catch(function(e) {
+    .catch(function (e) {
+      setPending(false);
       sel.options[sel.selectedIndex].text = oldText;
-      sel.value = currentType;
+      sel.value = oldType;
       console.error("Switch analysis failed:", e);
+      showUiNote("Analysis switch failed: " + e.message);
     });
   };
 
   // -----------------------------------------------------------------------
+  // Live re-simulation (sliders / time-range) — single POST path. Updates
+  // reuse the chart via setData(); only structural changes recreate it.
+  // -----------------------------------------------------------------------
+  function runSimulation() {
+    var loading = document.getElementById("sliderLoading");
+
+    var curAnalysis = document.getElementById("analysisType").value;
+    // Duration/time-step only apply to time-domain analyses; for AC/DC the
+    // Start/End/Step inputs are hidden and empty, so these are naturally
+    // undefined and no stale value can leak into ngspice's stop time.
+    var tEndRaw = isTimeDomainAnalysis(curAnalysis) ? document.getElementById("tEndInput").value.trim() : "";
+    var tStepRaw = isTimeDomainAnalysis(curAnalysis) ? document.getElementById("tStepInput").value.trim() : "";
+    var body = {
+      fixture: "{{DESIGN_ID}}",
+      components: getSliderValues(),
+      analysisType: curAnalysis,
+      duration: msToSpiceSec(tEndRaw),
+      timeStep: msToSpiceSec(tStepRaw),
+    };
+
+    setPending(true);
+    fetch(SIM_SERVER + "/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      setPending(false);
+      if (!data.ok) {
+        console.error("Simulation error:", data.error);
+        loading.textContent = "Error: " + data.error;
+        return;
+      }
+      clearUiNote();
+      xLabel = data.xAxisLabel;
+      if (data.analysisType !== analysisType || data.probes.length !== probes.length || !chart) {
+        renderChart(data.analysisType, data.xValues, data.probes);
+      } else {
+        updateChartData(data.xValues, data.probes);
+      }
+      probes = data.probes;
+      document.getElementById("netlistPre").textContent = data.netlist;
+    })
+    .catch(function (e) {
+      setPending(false);
+      loading.innerHTML = "";
+      var note = document.getElementById("serverNote");
+      note.innerHTML = "Server error: " + e.message + ". Is <code>bun run sim_server.ts</code> running?";
+      note.className = "server-note error";
+    });
+  }
+
+
+  // -----------------------------------------------------------------------
   // Dynamic sliders — backed by sim_server.ts
   // -----------------------------------------------------------------------
-  var COMPONENTS = {{COMPONENTS_JSON}};
-  var SIM_SERVER = "http://localhost:3777";
   var sliderDebounce = null;
 
   function initSliders() {
@@ -461,58 +1253,23 @@
     sliderDebounce = setTimeout(runSimulation, 250);
   }
 
-  function runSimulation() {
-    var loading = document.getElementById("sliderLoading");
-    loading.innerHTML = '<span class="slider-loading"></span>';
-
-    var curAnalysis = document.getElementById("analysisType").value;
-    var tEndRaw = document.getElementById("tEndInput").value.trim();
-    var body = {
-      fixture: "{{DESIGN_ID}}",
-      components: getSliderValues(),
-      analysisType: curAnalysis,
-      duration: tEndRaw || undefined,
-    };
-
-    fetch(SIM_SERVER + "/simulate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      loading.innerHTML = "";
-      if (!data.ok) {
-        console.error("Simulation error:", data.error);
-        loading.textContent = "Error: " + data.error;
-        return;
-      }
-      // Update chart with new data
-      var newLayout = buildLayout(data.analysisType, data.xAxisLabel);
-      var newTraces = data.probes.map(function(p, i) {
-        return makeTrace(data.analysisType, data.xValues, p, i, visible[i]);
-      });
-
-      // Update visible array for new probe count
-      while (visible.length < newTraces.length) visible.push(true);
-
-      // Persist layout for future slider updates
-      layout = newLayout;
-      Plotly.react("chart", newTraces, layout, config);
-
-      // Update netlist display
-      document.getElementById("netlistPre").textContent = data.netlist;
-    })
-    .catch(function(e) {
-      loading.innerHTML = "";
-      var note = document.getElementById("serverNote");
-      note.innerHTML = "Server error: " + e.message + ". Is <code>bun run sim_server.ts</code> running?";
-      note.className = "server-note error";
-    });
+  // Initialize the chart (if data exists), then sliders and URL params.
+  // A single uPlot instance is created here and reused by setData() for all
+  // subsequent live updates.
+  if (!timeData || timeData.length === 0) {
+    document.getElementById("chartRoot").innerHTML =
+      '<div style="padding:20px;color:#999;font-size:12px">No simulation data for this analysis type.</div>';
+  } else {
+    renderChart(analysisType, timeData, probes);
   }
-
-  // Initialize sliders on load
   initSliders();
+  applyUrlParams();
+
+  // Responsive resize — keeps the canvas sized to the flex chart-wrap.
+  if (window.ResizeObserver) {
+    new ResizeObserver(resizeChart).observe(document.getElementById("chart"));
+  }
+  window.addEventListener("resize", resizeChart);
 
   // ---- URL param auto-apply (from schematic editor) ----
   // e.g. ?R1=2.2k&C1=100n — sets slider values and triggers re-simulation
@@ -561,6 +1318,7 @@
 
   applyUrlParams();
 })();
+
 </script>
 </body>
 </html>

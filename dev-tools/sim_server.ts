@@ -22,6 +22,7 @@ import {
   rcLowpassFftNir,
   type NirV11,
 } from "../serializer/fixtures/index.ts"
+import { toDisplayX, isTimeDomainX } from "./axisScale.ts"
 import { spawn } from "child_process"
 import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "fs"
 import { join } from "path"
@@ -79,7 +80,27 @@ async function runNgspice(netlist: string): Promise<{ raw: string; log: string }
   })
 }
 
-// ---------------------------------------------------------------------------
+// ngspice .tran output contains every internal adaptive timestep regardless of
+// the requested TSTEP (a 20ms step over 50ms still yields ~200 raw points), so
+// the raw output is downsampled to an exact timeStep-spaced grid (0..tMax
+// inclusive) via nearest-sample pick, making the UI "time step" field visible.
+// Returns the input unchanged when the grid would be denser than the raw data.
+function decimateToStep(time: number[], vectors: number[][], step: number): { time: number[]; vectors: number[][] } {
+  const tMax = time[time.length - 1]
+  const grid: number[] = []
+  for (let t = 0; t < tMax - 1e-12; t += step) grid.push(t)
+  grid.push(tMax)
+  if (grid.length >= time.length) return { time, vectors }
+  const out: number[][] = vectors.map((v) => new Array(grid.length))
+  let nearest = 0
+  for (let g = 0; g < grid.length; g++) {
+    const target = grid[g]
+    while (nearest + 1 < time.length && Math.abs(time[nearest + 1] - target) < Math.abs(time[nearest] - target)) nearest++
+    for (let v = 0; v < vectors.length; v++) out[v][g] = vectors[v][nearest]
+  }
+  return { time: grid, vectors: out }
+}
+
 // Deep-clone a NIR and override component values
 // ---------------------------------------------------------------------------
 function overrideComponentValues(nir: NirV11, overrides: Record<string, string>): NirV11 {
@@ -217,6 +238,10 @@ function readSimTemplate(): string {
   return readFileSync(join(import.meta.dir, "interactive_simulator.html"), "utf8")
 }
 
+function readScaleModeJs(): string {
+  return readFileSync(join(import.meta.dir, "scaleMode.js"), "utf8")
+}
+
 function replaceAll(tpl: string, token: string, value: string): string {
   return tpl.split(token).join(value)
 }
@@ -269,6 +294,7 @@ async function generateSimPageHtml(fixtureName: string, analysisType: string): P
     )
     let html = readSimTemplate()
     html = replaceAll(html, "{{DESIGN_ID}}", nir.design_id || fixtureName)
+    html = replaceAll(html, "{{SCALE_MODE_JS}}", readScaleModeJs())
     html = replaceAll(html, "{{SCHEMATIC_FILE}}", "current_schematic.html")
     html = replaceAll(html, "{{WARN_BANNER}}", "")
     html = replaceAll(html, "{{PROBES_JSON}}", probeJson)
@@ -315,6 +341,8 @@ async function generateSimPageHtml(fixtureName: string, analysisType: string): P
   if (analysisType === "ac" && parsed.complexVectors) {
     for (let i = 0; i < probes.length; i++) {
       const p = probes[i]
+      // Skip the x-axis variable (frequency sweep) - it would plot frequency vs itself
+      if (p.name === "frequency") continue
       const imag = parsed.complexVectors[p.name]
       if (!imag) continue
       const magDb = p.values.map((re, j) => { const im = imag[j] ?? 0; const mag = Math.sqrt(re * re + im * im); return mag > 0 ? 20 * Math.log10(mag) : -200 })
@@ -324,7 +352,7 @@ async function generateSimPageHtml(fixtureName: string, analysisType: string): P
     }
   }
 
-  const xValues = time ? time.map((t: number) => t * 1000) : probes[0]?.values.map((_: number, i: number) => i) ?? []
+  const xValues = time ? toDisplayX(analysisType, time) : probes[0]?.values.map((_: number, i: number) => i) ?? []
   const tStartMs = xValues[0] ?? 0
   const tEndMs = xValues[xValues.length - 1] ?? 1
   const displayProbes = analysisType === "ac" && acProbes.length > 0 ? acProbes : probes
@@ -336,6 +364,7 @@ async function generateSimPageHtml(fixtureName: string, analysisType: string): P
 
   let html = readSimTemplate()
   html = replaceAll(html, "{{DESIGN_ID}}", nir.design_id || fixtureName)
+  html = replaceAll(html, "{{SCALE_MODE_JS}}", readScaleModeJs())
   html = replaceAll(html, "{{SCHEMATIC_FILE}}", "current_schematic.html")
   html = replaceAll(html, "{{WARN_BANNER}}", warnBannerHtml)
   html = replaceAll(html, "{{PROBES_JSON}}", JSON.stringify(displayProbes))
@@ -416,8 +445,17 @@ Bun.serve({
         // Step 1: serialize
         const so = await serializeNirAsync(overridden)
 
-        // Step 2: generate netlist
-        const nl = netlistFromCircuitJson(so.circuitJson, overridden as any, { analysisType, timeStep, duration })
+        // Step 2: generate netlist. timeStep/duration only apply to time-domain
+        // analyses (TRAN/OP/FFT); for AC (frequency sweep) and DC (voltage sweep)
+        // the Start/End concept is meaningless and a stale value from a previous
+        // analysis must not leak into ngspice's stop time. Guard shared with
+        // render_interactive_simulator.ts via axisScale.isTimeDomainX.
+        const nlOpts: any = { analysisType }
+        if (isTimeDomainX(analysisType)) {
+          if (timeStep !== undefined) nlOpts.timeStep = timeStep
+          if (duration !== undefined) nlOpts.duration = duration
+        }
+        const nl = netlistFromCircuitJson(so.circuitJson, overridden as any, nlOpts)
         console.log(`[simulate] netlist warnings: ${nl.warnings.length}`)
         for (const w of nl.warnings) console.log(`  - ${w}`)
 
@@ -469,20 +507,53 @@ Bun.serve({
           }
         }
 
+        // Honor the UI "time step" field: ngspice writes every internal adaptive
+        // step to the .raw, so the raw output is decimated to exactly
+        // timeStep-spaced samples. Without this the field would be cosmetic
+        // (identical point count for any TSTEP). TRAN-only.
+        let probeVectors: Record<string, number[]> = parsed.vectors
+        if (analysisType === "tran" && time && timeStep) {
+          const step = parseFloat(timeStep)
+          if (isFinite(step) && step > 0) {
+            const dec = decimateToStep(time, probeNames.map((n) => parsed.vectors[n]), step)
+            time = dec.time
+            probeVectors = {}
+            for (let i = 0; i < probeNames.length; i++) probeVectors[probeNames[i]] = dec.vectors[i]
+          }
+        }
+
         const xValues = time
-          ? time.map((t) => analysisType === "tran" ? t * 1000 : t)
+          ? toDisplayX(analysisType, time)
           : probeNames.length > 0
             ? parsed.vectors[probeNames[0]].map((_: number, i: number) => i)
             : []
 
-        const probes = probeNames.map((name, i) => ({
+        const rawProbes = probeNames.map((name, i) => ({
           name,
           color: PALETTE[i % PALETTE.length],
-          values: parsed.vectors[name],
+          values: probeVectors[name],
           type: name.startsWith("i(") || /#branch/.test(name) ? "current" : "voltage",
         }))
 
-        console.log(`[simulate] ok — ${probes.length} probes, ${xValues.length} points`)
+        // AC: return magnitude (dB) + phase (deg) series, skip the x-axis
+        // (frequency) so the chart isn't littered with a frequency-vs-itself trace.
+        let displayProbes = rawProbes
+        if (analysisType === "ac" && parsed.complexVectors) {
+          const acProbes: typeof rawProbes = []
+          for (let i = 0; i < rawProbes.length; i++) {
+            const p = rawProbes[i]
+            if (p.name === "frequency") continue
+            const imag = parsed.complexVectors[p.name]
+            if (!imag) continue
+            const magDb = p.values.map((re, j) => { const im = imag[j] ?? 0; const mag = Math.sqrt(re * re + im * im); return mag > 0 ? 20 * Math.log10(mag) : -200 })
+            const phaseDeg = p.values.map((re, j) => { const im = imag[j] ?? 0; return Math.atan2(im, re) * (180 / Math.PI) })
+            acProbes.push({ name: p.name + " |H(f)| (dB)", color: p.color, values: magDb, type: "magnitude" })
+            acProbes.push({ name: p.name + " phase (deg)", color: p.color, values: phaseDeg, type: "phase" })
+          }
+          if (acProbes.length > 0) displayProbes = acProbes
+        }
+
+        console.log(`[simulate] ok — ${displayProbes.length} probes, ${xValues.length} points`)
 
         return Response.json({
           ok: true,
@@ -490,7 +561,7 @@ Bun.serve({
           netlist: nl.netlist,
           xAxisLabel,
           xValues,
-          probes,
+          probes: displayProbes,
         }, { headers: corsHeaders })
 
       } catch (e: any) {
@@ -508,7 +579,7 @@ Bun.serve({
           return Response.json({ error: "Unknown fixture: " + fixtureName + ". Available: " + Object.keys(FIXTURES).join(", ") }, { status: 404, headers: corsHeaders })
         }
         const html = await generateSimPageHtml(fixtureName, analysisType)
-        return new Response(html, { headers: { "Content-Type": "text/html", ...corsHeaders } })
+        return new Response(html, { headers: { "Content-Type": "text/html", "Cache-Control": "no-store", ...corsHeaders } })
       } catch (e: any) {
         console.error("[GET /] ERROR:", e.message)
         return new Response("Simulation error: " + e.message, { status: 500, headers: { "Content-Type": "text/plain", ...corsHeaders } })
@@ -521,7 +592,11 @@ Bun.serve({
       const content = readFileSync(filePath)
       const ext = filePath.split(".").pop() ?? ""
       const mime = ext === "html" ? "text/html" : ext === "js" ? "text/javascript" : ext === "css" ? "text/css" : "text/plain"
-      return new Response(content, { headers: { "Content-Type": mime, ...corsHeaders } })
+      // no-store on HTML so a browser can never replay a stale generated page
+      // (the page embeds its own data; there is nothing worth caching).
+      const headers: Record<string, string> = { "Content-Type": mime, ...corsHeaders }
+      if (ext === "html") headers["Cache-Control"] = "no-store"
+      return new Response(content, { headers })
     }
 
     // If exact file not found and path looks like an HTML file, serve generated page
@@ -531,7 +606,7 @@ Bun.serve({
       try {
         if (FIXTURES[fixtureName]) {
           const html = await generateSimPageHtml(fixtureName, analysisType)
-          return new Response(html, { headers: { "Content-Type": "text/html", ...corsHeaders } })
+          return new Response(html, { headers: { "Content-Type": "text/html", "Cache-Control": "no-store", ...corsHeaders } })
         }
       } catch { /* fall through to 404 */ }
     }
