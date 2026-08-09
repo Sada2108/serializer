@@ -16,7 +16,8 @@
     "snapshot:update": "tsci snapshot --update",
     "start": "tsci dev",
     "typecheck": "tsc --noEmit",
-    "test:serializer": "bun test serializer.test.ts"
+    "test:serializer": "bun test serializer.test.ts",
+    "render:pcb": "bun run dev-tools/render_pcb_viewer.ts"
   },
   "dependencies": {
     "@tscircuit/capacity-autorouter": "0.0.692",

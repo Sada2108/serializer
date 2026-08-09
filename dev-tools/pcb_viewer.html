@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{FIXTURE_NAME}} · PCB Viewer</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #0b0d10;
+    }
+    #frame {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: #12151a;
+      color: #d8dde3;
+      font: 12px ui-monospace, "SF Mono", monospace;
+      border-bottom: 1px solid #23282f;
+      flex-shrink: 0;
+    }
+    header .dim { color: #6b7480; }
+    main {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+    kicanvas-embed {
+      display: block;
+      flex: 1;
+      width: 100%;
+      aspect-ratio: auto;
+      background: transparent;
+    }
+  </style>
+  <script type="module" src="kicanvas.js"></script>
+</head>
+<body>
+  <div id="frame">
+    <header>
+      <span>{{FIXTURE_NAME}} · KiCanvas PCB viewer</span>
+      <span class="dim">{{DESIGN_ID}}</span>
+    </header>
+    <main>
+      <kicanvas-embed controls="full" theme="kicad">
+        <kicanvas-source type="board" name="{{FIXTURE_NAME}}.kicad_pcb">
+{{KICAD_PCB}}
+        </kicanvas-source>
+      </kicanvas-embed>
+    </main>
+  </div>
+</body>
+</html>

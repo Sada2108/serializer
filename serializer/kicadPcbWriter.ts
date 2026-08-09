@@ -156,6 +156,16 @@ function buildFootprintBlocks(
   for (const n of sourceNets) {
     netIdToName.set(n.source_net_id, n.name ?? n.source_net_id)
   }
+  // Net name -> declaration index, matching buildNetSection's numbering
+  // (sourceNets[i] -> i + 1, empty string -> 0). KiCad requires indexed
+  // (net N "name") references on pads/tracks/vias, not name-only forms.
+  const netNameToIndex = new Map<string, number>()
+  netNameToIndex.set("", 0)
+  for (let i = 0; i < sourceNets.length; i++) {
+    const net = sourceNets[i]
+    netNameToIndex.set(net.name ?? net.source_net_id, i + 1)
+    netNameToIndex.set(net.source_net_id, i + 1)
+  }
   // source_port -> net name
   const sourcePortNetMap = new Map<string, string>()
   for (const st of sourceTraces) {
@@ -296,9 +306,10 @@ function buildFootprintBlocks(
       const padNum = (pad.port_hints?.find((h: string) => /^\d+$/.test(h)) ?? String(pi + 1)) as string
       const maskLayer = padLayer.replace('.Cu', '.Mask')
       const netName = padNetMap.get(pad.pcb_smtpad_id)
-      const netProp = netName ? ` (net "${netName}")` : ` (net "")`
+      const netIdx = netName ? netNameToIndex.get(netName) ?? 0 : 0
+      const netProp = ` (net ${netIdx} "${netName ?? ""}")`
       padLines.push(
-        `        (pad ${padNum} smd roundrect (at ${padX.toFixed(4)} ${padY.toFixed(4)}) (size ${padW.toFixed(4)} ${padH.toFixed(4)}) (layers "${padLayer}" "${maskLayer}") (roundrect_rratio 0.25)${netProp})`
+        `        (pad "${padNum}" smd roundrect (at ${padX.toFixed(4)} ${padY.toFixed(4)}) (size ${padW.toFixed(4)} ${padH.toFixed(4)}) (layers "${padLayer}" "${maskLayer}") (roundrect_rratio 0.25)${netProp})`
       )
     }
 
@@ -323,9 +334,10 @@ function buildFootprintBlocks(
         kicadShape = "circle"
       }
       const netName = phNetMap.get(ph.pcb_plated_hole_id)
-      const netProp = netName ? ` (net "${netName}")` : ` (net "")`
+      const netIdx = netName ? netNameToIndex.get(netName) ?? 0 : 0
+      const netProp = ` (net ${netIdx} "${netName ?? ""}")`
       padLines.push(
-        `        (pad ${padNum} thru_hole ${kicadShape} (at ${padX.toFixed(4)} ${padY.toFixed(4)}) (size ${padW.toFixed(4)} ${padH.toFixed(4)}) (drill ${drillDiam.toFixed(4)}) (layers "*.Cu")${netProp})`
+        `        (pad "${padNum}" thru_hole ${kicadShape} (at ${padX.toFixed(4)} ${padY.toFixed(4)}) (size ${padW.toFixed(4)} ${padH.toFixed(4)}) (drill ${drillDiam.toFixed(4)}) (layers "*.Cu")${netProp})`
       )
     }
 
@@ -478,7 +490,8 @@ function buildTraceSegments(
 
     const rawNetName = trace.connection_name ?? ""
     const resolvedNetName = sourceNetIdToName.get(rawNetName) ?? rawNetName
-    const netLabel = `"${resolvedNetName}"`
+    const netIdx = netNameToIndex.get(resolvedNetName) ?? netNameToIndex.get(rawNetName) ?? 0
+    const netLabel = `${netIdx} "${resolvedNetName}"`
 
     // Emit wire segments and detect implicit layer changes that need a via.
     let currentLayer: string | null = null
