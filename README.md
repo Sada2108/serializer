@@ -1,52 +1,89 @@
-# Layer 3 Serializer
+# Layer 3 — Serializer, PCB Pipeline & Simulator
 
-Converts NIR (Neutral Intermediate Representation) circuit data into a rendered
-SVG schematic, via Circuit JSON as the intermediate format.
-
-## Pipeline
+Converts NIR (Neutral Intermediate Representation) circuit data into a
+schematic SVG, a routed KiCad PCB, and/or a SPICE simulation — via Circuit
+JSON as the shared intermediate format.
 
 ```
-NIR (JSON) → parse & validate → Circuit JSON → layout → SVG
+NIR (JSON)
+   │
+   ├─► serializeNir() / serializeNirAsync() ──► Circuit JSON ──► SVG schematic
+   │                                                  │
+   │                                                  ├─► KiCad .kicad_pcb (routed)
+   │                                                  │
+   └─► netlistFromCircuitJson() ──► SPICE netlist ──► ngspice ──► simulation vectors
 ```
 
-1. **Schema detection** — automatically detects whether input NIR is the
-   legacy format (`source_component_base` / `source_net` / `source_trace`)
-   or the newer v1.1 format (`components` / `netlist` / `board_spec`).
-2. **Validation** — required fields are checked per component, net, and
-   connection. Malformed input raises a clear error rather than silently
-   returning an empty result.
-3. **Layout** — components are grouped using union-find based on shared
-   nets and hard proximity constraints, then placed row-by-row and
-   centered in the canvas.
-4. **Rendering** — each component type (resistor, capacitor, diode, IC,
-   ferrite bead) is drawn with its own real schematic symbol, reference
-   label, and value label. Connecting wires are drawn between component
-   pins using orthogonal (right-angle) routing.
+---
 
-## Files
+## 0. Setup
 
-| File | Purpose |
-|---|---|
-| `serializer/serializer.ts` | Core serializer logic (schema parsing, layout, symbol rendering, wire routing) |
-| `serializer/serializer.py` | Python wrapper — calls `serializer.ts` via a Node subprocess bridge |
-| `serializer/fixtures/index.ts` | Typed NIR fixture loader |
-| `serializer/fixtures/libbrecht-hall.nir.json` | Legacy (v0.1) schema test fixture |
-| `serializer/fixtures/instrumentation_amp_001.nir.json` | Current (v1.1) schema test fixture |
-| `serializer.test.ts` | bun test suite (schema detection, end-to-end rendering, loud-failure cases) |
-| `test_serializer.py` | pytest suite for the Python bridge |
+```bash
+bun install
+```
 
-## Usage
+System dependencies (install what you need for the parts you're touching):
 
-**From TypeScript:**
+| Dependency | Needed for | Install |
+|---|---|---|
+| **Bun** (v1.3.x) | everything — test runner + TS runtime | https://bun.sh |
+| **Python 3** | Python bridge tests only | usually preinstalled |
+| **ngspice** | simulation, interactive sim viewer, sim_server | `brew install ngspice` (macOS) / `apt install ngspice` (Linux) |
+| **kicad-cli** (v10.0.4) | PCB DRC validation | install KiCad 10, `kicad-cli` ships with it |
+
+No `pip install` step — the Python side (`serializer.py`, `simulator.py`,
+`test_serializer.py`, `test_simulator.py`) only uses the standard library
+plus `pytest`, which you'll already have if you run Python test suites.
+
+---
+
+## 1. Running the tests
+
+```bash
+# Everything (TypeScript)
+bun test
+
+# Just one area
+bun test serializer.test.ts
+bun test pcbRouting.test.ts router.test.ts kicadPcbWriter.test.ts
+bun test simulator.test.ts
+
+# Type check
+bun run typecheck
+
+# Python bridge
+python3 -m pytest test_serializer.py -v
+python3 -m pytest test_simulator.py -v
+```
+
+**Always verify with raw output**, not a summary — `bun test 2>&1 | tail -50`.
+Test counts have silently shrunk across sessions before; don't trust a
+reported pass count you haven't seen for yourself.
+
+---
+
+## 2. Schematic output (SVG)
+
+**TypeScript:**
 ```ts
 import { serializeNir } from "./serializer/serializer"
-import { instrumentationAmpNir } from "./serializer/fixtures"
+import { rcLowpassNir } from "./serializer/fixtures"
 
-const result = serializeNir(instrumentationAmpNir)
+const result = serializeNir(rcLowpassNir)
 // result.circuitJson, result.svg, result.viewerUsed
 ```
 
-**From Python:**
+**Async (CircuitRunner auto-place/auto-route — used for anything with a
+`board_spec`, i.e. anything that also needs PCB output):**
+```ts
+import { serializeNirAsync } from "./serializer/serializer"
+import { opampNoninvNir } from "./serializer/fixtures"
+
+const result = await serializeNirAsync(opampNoninvNir)
+// result.circuitJson, result.svg, result.kicadPcb (if the NIR has a pcb_board)
+```
+
+**Python:**
 ```python
 from serializer.serializer import serialize_nir
 import json
@@ -58,156 +95,174 @@ result = serialize_nir(nir)
 # result.circuit_json, result.svg, result.viewer_used
 ```
 
-## Running tests
-
+**Live interactive schematic viewer** (persistent dev server, not a static
+file — reads directly from `serializeNirAsync`):
 ```bash
-bun test serializer.test.ts
-python3 -m pytest test_serializer.py -v
+bun run dev-tools/render_interactive_schematic.ts [fixture_name]
+# writes dev-tools/current_schematic.html — open it in a browser
 ```
-
-## Known limitations (as of this commit)
-
-- **PCB layout and 3D model rendering are not yet implemented** — this
-  module currently only produces a schematic view.
-- **Board dimensions default to 50×50mm** when `board_spec` doesn't
-  specify `width`/`height` — a placeholder until the schema carries
-  real board size data.
-- **Layout is a constraint-aware grid, not a true force-directed or
-  constraint-solving layout** — components sharing a net or a hard
-  proximity constraint are grouped and row-placed, not optimally packed.
-- **`placement_rules_text`** (natural-language placement rules) are
-  parsed but not yet used to influence layout — that requires LLM-based
-  reasoning, planned for the verifier module.
-- This module does **not** call `tsci simulate` or any tscircuit
-  wasm/ngspice wrapper — simulation is handled separately via a direct
-  ngspice subprocess call (see orchestrator, not part of this module).
-
-## Schema versions supported
-
-- **v0.1** (legacy) — flat `source_component_base` / `source_net` /
-  `source_trace` records. No positions, no confidence scores.
-- **v1.1** (current) — structured `components` / `netlist` / `board_spec`
-  with per-component positions, per-layer confidence scores, named test
-  points, and natural-language placement rules.
-
-Both schemas are supported simultaneously; the serializer auto-detects
-which one it's given.
 
 ---
 
-# Simulator
+## 3. PCB output (routed KiCad board)
 
-Runs SPICE netlists through ngspice (via subprocess) and returns parsed
-simulation vectors.  Mirrors the serializer's architecture: core TS logic
-(`simulator/simulator.ts`) + Python wrapper (`simulator/simulator.py`).
+Any fixture with a `board_spec` in its NIR produces `result.kicadPcb` from
+`serializeNirAsync` automatically — full pipeline (autoroute → Manhattan
+snap → trace/pad clearance → chamfer → KiCad emit), no extra step needed.
 
-## Pipeline
+**View it** (KiCanvas-based viewer, added in the `fix/pcblayoutviewer` PR):
+```bash
+bun run render:pcb [fixture_name]
+# same as: bun run dev-tools/render_pcb_viewer.ts [fixture_name]
+# writes dev-tools/current_pcb.html — open it in a browser
 
+# available fixture_names:
+#   rc_lowpass_001 (default) | opamp_noninv_001 | voltage_divider_001
+#   rc_lowpass_ac_001 | rc_lowpass_fft_001 | instrumentation_amp_001
+#   lm358_noninv_001 | 555_timer | audio_amplifier_1386 | audioamplifier_lm386
 ```
-SPICE netlist (.cir) → ngspice -b → ASCII .raw → parse → { vectors, metadata }
+
+**Validate with DRC** (manual — not wired into the test suite):
+```bash
+# Generate a .kicad_pcb file to check. There are two ways to do this and
+# they currently produce DIFFERENT output — see the note below.
+kicad-cli pcb drc <file>.kicad_pcb -o /tmp/drc_out.json --format json
 ```
 
-Or from Circuit JSON:
+> ⚠️ **`_gen_pcb.ts` is a separate ad-hoc pipeline, not the production
+> path.** `bun run _gen_pcb.ts rc_lowpass` (anything other than the literal
+> string `rc_lowpass` routes the opamp fixture instead — no other fixture
+> names are supported) re-routes from scratch and calls
+> `removeZeroLengthSegments`, but skips `enforceTracePadClearance` and both
+> chamfer passes entirely. The DRC "0 violations" result documented in
+> `PCB_LAYOUT_REPORT.md` was validated against `_gen_pcb.ts`'s output, **not**
+> against what `serializeNirAsync`/`render_pcb_viewer.ts` actually ship.
+> Treat `_gen_pcb.ts`'s DRC result as unverified for the real pipeline until
+> this is reconciled — currently in progress (see the chamfer double-apply /
+> clearance-blind-to-diagonals issue being fixed).
+
+**Env flags** (real footprint/symbol data vs. hardcoded fallbacks):
+```bash
+OPEN_FORGE_USE_KICAD_SYMBOLS=1 OPEN_FORGE_USE_PARSED_FOOTPRINTS=1 bun test
 ```
-Circuit JSON + NIR → netlistFromCircuitJson() → SPICE netlist → ngspice → vectors
-```
+Off (default): hardcoded `FOOTPRINT_SIZE_MM` values.
+On: real pad-based dimensions parsed from `.kicad_mod` files in the KiCad
+library — requires KiCad's footprint library to be installed at the
+platform-standard path (e.g. `/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints/` on macOS).
 
-## Files
+---
 
-| File | Purpose |
-|---|---|
-| `simulator/simulator.ts` | Core simulator: temp file I/O, ngspice subprocess, .raw parser |
-| `simulator/parseRawFile.ts` | Pure ngspice ASCII .raw parser (unit-testable) |
-| `simulator/netlistFromCircuitJson.ts` | Circuit JSON + NIR → SPICE netlist (value lookup from NIR) |
-| `simulator/simulator.py` | Python wrapper — calls TS via `bun`/`tsx` bridge |
-| `simulator/fixtures/rc_circuit.cir` | Known-good RC netlist with `.tran` |
-| `simulator/fixtures/rc_circuit.expected.json` | Golden vectors for regression |
-| `simulator/fixtures/index.ts` | Typed fixture loader |
-| `simulator.test.ts` | bun test suite (parser, netlist gen, end-to-end) |
-| `test_simulator.py` | pytest suite for Python wrapper |
+## 4. Simulation (ngspice)
 
-## System dependency
-
-**ngspice** must be installed and on PATH, or set `NGSPICE_BIN` to the
-binary.
-
-- Linux/macOS: `apt install ngspice` / `brew install ngspice`
-- Windows: Download from https://ngspice.sourceforge.io/download.html
-  - **Critical**: The default `ngspice.exe` on Windows is a GUI wrapper
-    that hangs in batch mode. Use `ngspice_con.exe` (console variant) and
-    set `NGSPICE_BIN=C:\Tools\Spice64\bin\ngspice_con.exe` (or wherever
-    you installed it).
-
-Check version: `ngspice -v` (or `%NGSPICE_BIN% -v`).  The test suite
-records the banner via `getNgspiceVersion()`.
-
-## Usage
-
-**From TypeScript:**
+**Direct netlist:**
 ```ts
 import { simulateNetlist } from "./simulator/simulator"
-import { netlistFromCircuitJson } from "./simulator/netlistFromCircuitJson"
-import { serializeNir } from "./serializer/serializer"
-import { instrumentationAmpNir } from "./serializer/fixtures"
 
-// Option A: direct netlist
-const netlist = `
+const result = await simulateNetlist(`
 * RC filter
 V1 in 0 PULSE(0 1 0 1n 1n 1m 2m)
 R1 in out 1k
 C1 out 0 1u
 .tran 10u 5m
-`
-const result = await simulateNetlist(netlist)
+`)
 console.log(result.vectors["v(out)"])
+```
 
-// Option B: NIR -> Circuit JSON -> netlist -> simulate
-const { circuitJson } = serializeNir(instrumentationAmpNir)
-const { netlist } = netlistFromCircuitJson(circuitJson, instrumentationAmpNir)
+**From a NIR fixture, end to end:**
+```ts
+import { serializeNirAsync } from "./serializer/serializer"
+import { netlistFromCircuitJson } from "./simulator/netlistFromCircuitJson"
+import { simulateNetlist } from "./simulator/simulator"
+import { rcLowpassNir } from "./serializer/fixtures"
+
+const { circuitJson } = await serializeNirAsync(rcLowpassNir)
+const { netlist } = netlistFromCircuitJson(circuitJson, rcLowpassNir)
 const simResult = await simulateNetlist(netlist)
 ```
 
-**From Python:**
+**Python:**
 ```python
-from simulator.simulator import simulate_netlist, netlist_from_circuit_json
-import json
+from simulator.simulator import simulate_netlist
 
-# Direct netlist
 with open("simulator/fixtures/rc_circuit.cir") as f:
-    netlist = f.read()
-
-result = simulate_netlist(netlist)
-print(len(result.vectors["v(out)"]))  # -> 610 points
+    result = simulate_netlist(f.read())
+print(len(result.vectors["v(out)"]))
 ```
 
-## Running tests
-
+**Interactive simulator (sliders on component values), two ways:**
 ```bash
-# TypeScript (bun)
-bun test simulator.test.ts
+# One-shot static render for a single fixture:
+bun run dev-tools/render_interactive_simulator.ts [fixture_name]
+# writes dev-tools/current_sim.html
 
-# Python (pytest)
-python -m pytest test_simulator.py -v
+# Live server — re-simulates on every slider move, serves the page itself:
+bun run dev-tools/sim_server.ts
+# http://localhost:3777 (override with PORT=xxxx)
+# GET  /fixture/:name   — component list for slider generation
+# POST /simulate        — { fixture, components: { ref: value } } -> ngspice re-run
 ```
 
-### Windows-specific notes
+If you see `ngspice -v produced no output` or a hang: on Windows, point
+`NGSPICE_BIN` at `ngspice_con.exe` (the console build), not `ngspice.exe`
+(the GUI wrapper hangs in batch mode).
 
-- Set `NGSPICE_BIN` to the console binary:
-  ```powershell
-  $env:NGSPICE_BIN = "C:\Tools\Spice64\bin\ngspice_con.exe"
-  bun test simulator.test.ts
-  ```
-- If you see `ngspice -v produced no output` or tests hang, you're likely
-  hitting the GUI wrapper. Ensure `NGSPICE_BIN` points to `ngspice_con.exe`.
+---
 
-## Known limitations
+## 5. Files
 
-- Only passive components (R, C, L, D) and independent sources (V, I) are
-  modeled as SPICE primitives.  ICs (opamps, regulators, in-amps, digipots)
-  are emitted as 1-ohm placeholder resistors with a warning — accurate
-  simulation requires subcircuit models (`.subckt`) which are not bundled.
-- No Monte Carlo, no parameter sweeps — single-run transient/DC/AC only.
-- The `.control` block in generated netlists uses a fixed `.tran 1m 10m`;
-  real use-cases should override or post-process the netlist.
-- Complex-valued raw files (AC analysis) are parsed but only the real part
-  is kept — imaginary components are dropped with a warning.
+| File | Purpose |
+|---|---|
+| `serializer/serializer.ts` | Core: schema parsing, layout, symbol rendering, SVG wire routing, PCB pipeline orchestration |
+| `serializer/pcbRouting.ts` | PCB routing utilities — Circuit JSON ↔ SimpleRouteJson, placement clearance, trace-pad clearance, chamfering, collinear/zero-length cleanup |
+| `serializer/router.ts` | Thin wrapper around `@tscircuit/capacity-autorouter`; Manhattan snap |
+| `serializer/kicadPcbWriter.ts` | Circuit JSON → KiCad 10 `.kicad_pcb` S-expression writer |
+| `serializer/serializer.py` | Python wrapper — calls `serializer.ts` via a Node/Bun subprocess bridge |
+| `serializer/fixtures/index.ts` | Typed NIR fixture loader (v0.1 legacy + v1.1/v1.2 current) |
+| `simulator/simulator.ts` | ngspice subprocess driver + `.raw` parser |
+| `simulator/netlistFromCircuitJson.ts` | Circuit JSON + NIR → SPICE netlist |
+| `simulator/parseRawFile.ts` | Pure `.raw` file parser (unit-testable) |
+| `simulator/parseFourierOutput.ts` | AC/Fourier analysis output parser |
+| `simulator/simulator.py` | Python wrapper — calls the TS simulator via a Bun bridge |
+| `_gen_pcb.ts` | ⚠️ separate ad-hoc PCB regen/DRC script — see warning in §3, not the production path |
+| `dev-tools/render_pcb_viewer.ts` | KiCanvas-based PCB viewer driver |
+| `dev-tools/render_interactive_schematic.ts` | Interactive schematic viewer driver |
+| `dev-tools/render_interactive_simulator.ts` | Static interactive simulator (uPlot) render |
+| `dev-tools/sim_server.ts` | Live simulation server backing the slider UI |
+| `dev-tools/axisScale.ts` | AC/time-domain axis scaling logic for the simulator viewer |
+| `*.test.ts` | Bun test suites (`serializer.test.ts`, `pcbRouting.test.ts`, `router.test.ts`, `kicadPcbWriter.test.ts`, `simulator.test.ts`, plus dev-tools unit tests) |
+| `test_serializer.py`, `test_simulator.py` | pytest suites for the Python bridges |
+
+---
+
+## 6. Schema versions supported
+
+- **v0.1** (legacy, Libbrecht-Hall) — flat `source_component_base` /
+  `source_net` / `source_trace` records. No positions, no confidence scores.
+  Always synchronous (`serializeNir`), schematic-only, no PCB output.
+- **v1.1 / v1.2** (current) — structured `components` / `netlist` /
+  `board_spec`, per-component positions, per-layer confidence scores, named
+  test points, natural-language placement rules. Use `serializeNirAsync` to
+  get PCB output (`board_spec` triggers `kicadPcb` in the result).
+
+Both are auto-detected from the input; you don't need to specify which one
+you're passing in.
+
+---
+
+## 7. Known limitations
+
+- **`placement_rules_text`** (natural-language placement rules) is parsed
+  but not yet used to influence layout — planned for the verifier module,
+  LLM-scoped to constraint translation only, not raw coordinate generation.
+- **PCB routing is single-layer** (`F.Cu` only). Via/layer-change
+  infrastructure exists in `kicadPcbWriter.ts` but is untested in
+  production — no fixture currently exercises bottom-layer routing.
+- **DRC is manual**, not part of the test suite or CI — see §3's `_gen_pcb.ts`
+  warning; the documented "0 violations" result needs to be reconciled
+  against the actual `serializeNirAsync` pipeline.
+- **Only passive components (R, C, L, D) and independent sources (V, I)**
+  are modeled as real SPICE primitives in the simulator. ICs are emitted as
+  1-ohm placeholder resistors with a warning — no `.subckt` models bundled.
+- **No Monte Carlo / parameter sweeps** in `simulator.ts` — single-run only.
+  (Monte Carlo requires manual `agauss()`/`unif()` in `.control` blocks or an
+  external batch wrapper; ngspice has no built-in support.)
