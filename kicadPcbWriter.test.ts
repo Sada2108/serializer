@@ -107,7 +107,7 @@ describe("circuitJsonToKicadPcb", () => {
   })
 
   it("segments and vias reference valid net names", () => {
-    const viaMatches = kicadPcb.matchAll(/\(via[\s\S]*?\(net "([^"]+)"\)/g) || []
+    const viaMatches = kicadPcb.matchAll(/\(via[\s\S]*?\(net \d+ "([^"]+)"\)/g) || []
     for (const m of viaMatches) {
       const netName = m[1]
       expect(netName.length).toBeGreaterThan(0)
@@ -178,8 +178,8 @@ describe("pad rotation regression: net-to-net short detection", () => {
         if (atM) { curPad.relX = parseFloat(atM[1]); curPad.relY = parseFloat(atM[2]) }
         const sizeM = line.match(/\(size ([\d.\-]+) ([\d.\-]+)\)/)
         if (sizeM) { curPad.w = parseFloat(sizeM[1]); curPad.h = parseFloat(sizeM[2]) }
-        const netM = line.match(/\(net "([^"]*)"\)/)
-        if (netM) curPad.net = netM[1]
+        const netM = line.match(/\(net (\d+) "([^"]*)"\)/)
+        if (netM) curPad.net = netM[2]
       }
     }
 
