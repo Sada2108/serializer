@@ -157,8 +157,9 @@ function buildFootprintBlocks(
     netIdToName.set(n.source_net_id, n.name ?? n.source_net_id)
   }
   // Net name -> declaration index, matching buildNetSection's numbering
-  // (sourceNets[i] -> i + 1, empty string -> 0). KiCad requires indexed
-  // (net N "name") references on pads/tracks/vias, not name-only forms.
+  // (sourceNets[i] -> i + 1, empty string -> 0). Pads use indexed
+  // (net N "name") references; tracks/vias must use the index-only
+  // (net N) form or KiCad fails to load the board.
   const netNameToIndex = new Map<string, number>()
   netNameToIndex.set("", 0)
   for (let i = 0; i < sourceNets.length; i++) {
@@ -491,7 +492,7 @@ function buildTraceSegments(
     const rawNetName = trace.connection_name ?? ""
     const resolvedNetName = sourceNetIdToName.get(rawNetName) ?? rawNetName
     const netIdx = netNameToIndex.get(resolvedNetName) ?? netNameToIndex.get(rawNetName) ?? 0
-    const netLabel = `${netIdx} "${resolvedNetName}"`
+    const netLabel = `${netIdx}`
 
     // Emit wire segments and detect implicit layer changes that need a via.
     let currentLayer: string | null = null

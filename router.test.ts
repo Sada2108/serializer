@@ -138,7 +138,7 @@ describe("routeCircuit", () => {
     }
   });
 
-  it("no 90-degree corners exist (all corners chamfered to 45 degrees)", async () => {
+  it("produces Manhattan-only routes (every segment axis-aligned)", async () => {
     const result: RouteCircuitResult = await routeCircuit(routableFixture);
     expect(result.success).toBe(true);
 
@@ -161,27 +161,19 @@ describe("routeCircuit", () => {
           } else break
         }
 
-        // For any three consecutive points, we should never see
-        // an axis-aligned turn (A→B horizontal AND B→C vertical,
-        // or A→B vertical AND B→C horizontal). Those are 90-degree
-        // corners that should have been chamfered.
-        for (let k = 1; k < runPoints.length - 1; k++) {
-          const prev = runPoints[k - 1]
-          const curr = runPoints[k]
-          const next = runPoints[k + 1]
+        // Every consecutive pair of points must be axis-aligned
+        // (horizontal or vertical). The router is Manhattan-only;
+        // chamfering to 45 degrees happens later in the serializer
+        // pipeline (after clearance enforcement), not here.
+        for (let k = 0; k < runPoints.length - 1; k++) {
+          const a = runPoints[k]
+          const b = runPoints[k + 1]
 
-          const dx0 = Math.abs(curr.x - prev.x)
-          const dy0 = Math.abs(curr.y - prev.y)
-          const dx1 = Math.abs(next.x - curr.x)
-          const dy1 = Math.abs(next.y - curr.y)
+          const dx = Math.abs(b.x - a.x)
+          const dy = Math.abs(b.y - a.y)
+          const isAxisAligned = dx < 1e-6 || dy < 1e-6
 
-          const horiz0 = dy0 < 1e-6 && dx0 > 1e-6
-          const vert0 = dx0 < 1e-6 && dy0 > 1e-6
-          const horiz1 = dy1 < 1e-6 && dx1 > 1e-6
-          const vert1 = dx1 < 1e-6 && dy1 > 1e-6
-          const is90DegCorner = (horiz0 && vert1) || (vert0 && horiz1)
-
-          expect(is90DegCorner).toBe(false)
+          expect(isAxisAligned).toBe(true)
         }
 
         i = j

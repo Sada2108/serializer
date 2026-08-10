@@ -43,7 +43,13 @@ import type {
   NirV11,
 } from "./fixtures"
 import { circuitJsonToKicadPcb } from "./kicadPcbWriter"
-import { chamferCircuitJsonTracesTo45Degree, enforceTracePadClearance } from "./pcbRouting"
+import {
+  chamferCircuitJsonTracesTo45Degree,
+  centerPcbLayout,
+  enforceTracePadClearance,
+  mergeCollinearSegments,
+  removeZeroLengthSegments,
+} from "./pcbRouting"
 import { lookupSymbol, getGroundSymbolName, logMissingSymbol } from "./symbolLibrary"
 import { lookupKicadSymbol, hasKicadSymbol, setUseKicadSymbols } from "./kicadSymbolLibrary"
 import { getParsedFootprintSize, setUseParsedFootprints } from "./kicadFootprintLoader"
@@ -365,9 +371,9 @@ export function generateTscircuitJsx(nir: NirV11): string {
 
   const traceJsx = traceLines.join("\n")
 
-  // Board dimensions (board_spec lacks width/height, use sensible defaults)
-  const boardWidth = 80  // mm
-  const boardHeight = 60 // mm
+  // Board dimensions from board_spec (fallback: sensible defaults)
+  const boardWidth = board_spec?.width ?? 80  // mm
+  const boardHeight = board_spec?.height ?? 60 // mm
 
   return `import { board, ${getUniqueIntrinsics(components).join(", ")} } from "tscircuit"
 
@@ -1297,7 +1303,10 @@ export async function serializeNirAsync(nir: Nir | unknown): Promise<SerializerO
   const circuitJson = await nirToCircuitJsonAsync(nir)
   const { svg, viewerUsed } = renderCircuitJson(circuitJson)
   const hasPcbBoard = circuitJson.some((e: any) => e.type === "pcb_board")
-  const cleared = hasPcbBoard ? enforceTracePadClearance(circuitJson) : circuitJson
+  const centered = hasPcbBoard ? centerPcbLayout(circuitJson) : circuitJson
+  const deduped = hasPcbBoard ? removeZeroLengthSegments(centered) : centered
+  const merged = hasPcbBoard ? mergeCollinearSegments(deduped) : deduped
+  const cleared = hasPcbBoard ? enforceTracePadClearance(merged) : merged
   const chamfered = hasPcbBoard ? chamferCircuitJsonTracesTo45Degree(cleared) : cleared
   const kicadPcb = hasPcbBoard ? circuitJsonToKicadPcb(chamfered) : undefined
   return { circuitJson: chamfered, svg, viewerUsed, kicadPcb }

@@ -4,6 +4,7 @@ import { routeCircuit, type RoutedTrace } from "./router"
 
 const DEFAULT_MIN_TRACE_WIDTH = 0.15
 const DEFAULT_NOMINAL_TRACE_WIDTH = 0.2
+const COLLINEAR_EPSILON = 1e-6
 
 export function circuitJsonToSimpleRouteJson(circuitJson: AnyCircuitElement[]): SimpleRouteJson {
   const board = circuitJson.find((e: any) => e.type === "pcb_board") as any
@@ -617,34 +618,84 @@ export function removeZeroLengthSegments(circuitJson: AnyCircuitElement[]): AnyC
   })
 }
 
+// Translate all PCB-positioned elements so the copper content's bounding box
+// is centered on the board (CircuitRunner auto-placement clusters content near
+// the origin regardless of board size).
+export function centerPcbLayout(circuitJson: AnyCircuitElement[]): AnyCircuitElement[] {
+  const xs: number[] = []
+  const ys: number[] = []
+  const positioned = (el: any): boolean => {
+    if (el.type === "pcb_component") return (el.center != null && Number.isFinite(el.center.x) && Number.isFinite(el.center.y))
+    if (el.type === "pcb_smtpad" || el.type === "pcb_plated_hole" || el.type === "pcb_port" || el.type === "pcb_via")
+      return Number.isFinite(el.x) && Number.isFinite(el.y)
+    return false
+  }
+  const xOf = (el: any): number | null => el.type === "pcb_component" ? el.center.x : el.x
+  const yOf = (el: any): number | null => el.type === "pcb_component" ? el.center.y : el.y
+  for (const el of circuitJson as any[]) {
+    if (el.type === "pcb_trace" && Array.isArray(el.route)) {
+      for (const seg of el.route) {
+        if (seg && Number.isFinite(seg.x) && Number.isFinite(seg.y)) { xs.push(seg.x); ys.push(seg.y) }
+      }
+    } else if (positioned(el)) {
+      xs.push(xOf(el) as number)
+      ys.push(yOf(el) as number)
+    }
+  }
+  if (xs.length === 0) return circuitJson
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const dx = -(minX + maxX) / 2
+  const dy = -(minY + maxY) / 2
+  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return circuitJson
+  return circuitJson.map((el: any) => {
+    if (positioned(el)) {
+      const nx = (xOf(el) as number) + dx
+      const ny = (yOf(el) as number) + dy
+      if (el.type === "pcb_component") return { ...el, center: { ...el.center, x: nx, y: ny } }
+      return { ...el, x: nx, y: ny }
+    }
+    if (el.type === "pcb_trace" && Array.isArray(el.route)) {
+      return {
+        ...el,
+        route: el.route.map((seg: any) =>
+          seg && Number.isFinite(seg.x) && Number.isFinite(seg.y)
+            ? { ...seg, x: seg.x + dx, y: seg.y + dy }
+            : seg,
+        ),
+      }
+    }
+    return el
+  })
+}
+
 export function mergeCollinearSegments(circuitJson: AnyCircuitElement[]): AnyCircuitElement[] {
   return circuitJson.map((el: any) => {
     if (el.type !== "pcb_trace" || !Array.isArray(el.route)) return el
     const route = [...el.route]
     const out: any[] = []
-    let i = 0
-    while (i < route.length) {
-      const seg = route[i]
-      if (seg.route_type !== "wire" || i === 0) {
-        out.push(seg)
-        i++
-        continue
+    for (const seg of route) {
+      out.push(seg)
+      while (out.length >= 3) {
+        const c = out[out.length - 1]
+        const b = out[out.length - 2]
+        const a = out[out.length - 3]
+        if (
+          a.route_type !== "wire" ||
+          b.route_type !== "wire" ||
+          c.route_type !== "wire" ||
+          a.layer !== b.layer ||
+          b.layer !== c.layer
+        ) {
+          break
+        }
+        const cross =
+          (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)
+        if (Math.abs(cross) > COLLINEAR_EPSILON) break
+        out.splice(out.length - 2, 1)
       }
-      const prev = out[out.length - 1]
-      if (prev.route_type !== "wire" || seg.layer !== prev.layer) {
-        out.push(seg)
-        i++
-        continue
-      }
-      const sameX = Math.abs(prev.x - seg.x) < 0.001
-      const sameY = Math.abs(prev.y - seg.y) < 0.001
-      if (sameX || sameY) {
-        prev.x = seg.x
-        prev.y = seg.y
-      } else {
-        out.push(seg)
-      }
-      i++
     }
     return { ...el, route: out }
   })

@@ -150,7 +150,17 @@ Found 0 unconnected items
 
 All 3 nets fully routed. 0 errors, 0 warnings, 0 unconnected items. Board outline encloses all traces with sufficient edge clearance.
 
-**Fixture:** `opamp_noninv` (OPA344 + R1-R5, C1-C4, 11 components) — routed but not yet validated against latest DRC fixes.
+**Fixture:** `opamp_noninv` (OPA344 + R1-R5, C1-C4, 11 components) — validated through the real `serializeNirAsync` path (CircuitRunner autorouting in/out, NOT `_gen_pcb.ts` re-route).
+
+```
+$ kicad-cli pcb drc _opamp_real.kicad_pcb -o /tmp/opamp_real.json --format json
+Found 3 violations (all silk_over_copper: R3/R4/R5 VREF reference field clipped by solder mask)
+Found 0 unconnected items
+```
+
+All 13 nets fully routed. The 3 silk_over_copper entries are silkscreen-over-pad warnings (0402 passives packed in a row) — matches the historical pre-migration baseline exactly and is not a routing error.
+
+**Root cause of earlier high opamp counts (152 via `_gen_pcb.ts`, 15 via `serializeNirAsync`):** `mergeCollinearSegments` (serializer/pcbRouting.ts) used a pairwise same-axis merge that silently deleted legitimate route pivots (e.g. rc_lowpass GND's diagonal-then-vertical bend became a phantom straight diagonal clipping the VIN pad, and VIN/VOUT start points were absorbed into degenerate/stub traces). Fixed 2026-08-10 with a true three-point cross-product collinearity test (`COLLINEAR_EPSILON = 1e-6`). Post-fix baselines: rc_lowpass 0/0, opamp 3 warnings/0 unconnected.
 
 ### Test Status
 
@@ -188,7 +198,7 @@ DRC validation requires running `kicad-cli pcb drc` as a separate manual step. T
 
 ### 5.4 Only Two Fixtures Validated for Full Routing
 
-The `rc_lowpass` fixture (2 passives, 3 nets) has been fully validated through the routing pipeline with clean DRC. The `opamp_noninv` fixture (11 components, 13 nets) routes successfully but has not been re-validated against the latest DRC fixes (NIR position override, trace net mapping).
+The `rc_lowpass` fixture (2 passives, 3 nets) has been fully validated through the routing pipeline with clean DRC. The `opamp_noninv` fixture (11 components, 13 nets) has also been validated — through the real `serializeNirAsync` path (`_gen_pcb_real.ts` → `kicad-cli pcb drc`) — at 3 silk_over_copper warnings, 0 unconnected. Both validations postdate the `mergeCollinearSegments` root-cause fix (2026-08-10) that eliminated the phantom-diagonal/degenerate-trace corruption, so these numbers reflect the actual production path (CircuitRunner autorouting), not the `_gen_pcb.ts` re-route pipeline.
 
 ### 5.5 Single-Layer Routing
 
@@ -200,7 +210,7 @@ The current implementation routes exclusively on the top copper layer (`F.Cu`). 
 
 1. **Commit current state.** Stage the 4 bug fixes and all PCB layout files to establish a clean git history baseline.
 
-2. **Validate opamp_noninv through full DRC.** Run `kicad-cli pcb drc _opamp_test.kicad_pcb` after regenerating with the latest fixes.
+2. ~~**Validate opamp_noninv through full DRC.**~~ **DONE (2026-08-10):** opamp_noninv validated through the real `serializeNirAsync` path — 3 silk_over_copper warnings (R3/R4/R5), 0 unconnected. Also completed: `mergeCollinearSegments` root-cause fix (phantom-diagonal/degenerate-trace corruption).
 
 3. **Add DRC assertion to test suite.** Wrap `kicad-cli pcb drc` in a Bun test that asserts 0 violations and 0 unconnected items. Requires `kicad-cli` availability check (similar to ngspice skip pattern).
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "bun:test"
-import { circuitJsonToSimpleRouteJson, mergeRoutedTraces, routeCircuitJson, enforcePlacementClearance } from "./serializer/pcbRouting"
+import { circuitJsonToSimpleRouteJson, mergeRoutedTraces, routeCircuitJson, enforcePlacementClearance, mergeCollinearSegments } from "./serializer/pcbRouting"
 import { serializeNirAsync } from "./serializer/serializer"
 import { opampNoninvNir } from "./serializer/fixtures"
 import type { AnyCircuitElement } from "circuit-json"
@@ -136,6 +136,63 @@ describe("pcbRouting", () => {
       for (const id of remainingIds) {
         expect(oldIds.has(id)).toBe(false)
       }
+    })
+  })
+
+  describe("mergeCollinearSegments", () => {
+    it("preserves a genuine route pivot (diagonal then vertical, non-collinear)", () => {
+      const trace: AnyCircuitElement[] = [
+        {
+          type: "pcb_trace",
+          pcb_trace_id: "t1",
+          source_trace_id: "st1",
+          connection_name: "GND",
+          route: [
+            { route_type: "wire", x: 0, y: -1.27, width: 0.15, layer: "top" },
+            { route_type: "wire", x: 2.46, y: 1.19, width: 0.15, layer: "top" },
+            { route_type: "wire", x: 2.46, y: 4.745, width: 0.15, layer: "top" },
+          ],
+        } as any,
+      ]
+
+      const merged = mergeCollinearSegments(trace)
+      const route = (merged[0] as any).route
+
+      expect(route.length).toBe(3)
+      expect(route[0].x).toBe(0)
+      expect(route[0].y).toBe(-1.27)
+      expect(route[1].x).toBe(2.46)
+      expect(route[1].y).toBe(1.19)
+      expect(route[2].x).toBe(2.46)
+      expect(route[2].y).toBe(4.745)
+    })
+
+    it("merges truly collinear redundant points on a straight run", () => {
+      const trace: AnyCircuitElement[] = [
+        {
+          type: "pcb_trace",
+          pcb_trace_id: "t2",
+          source_trace_id: "st2",
+          connection_name: "VOUT",
+          route: [
+            { route_type: "wire", x: 0, y: 0, width: 0.15, layer: "top" },
+            { route_type: "wire", x: 3, y: 0, width: 0.15, layer: "top" },
+            { route_type: "wire", x: 7, y: 0, width: 0.15, layer: "top" },
+            { route_type: "wire", x: 7, y: 5, width: 0.15, layer: "top" },
+          ],
+        } as any,
+      ]
+
+      const merged = mergeCollinearSegments(trace)
+      const route = (merged[0] as any).route
+
+      expect(route.length).toBe(3)
+      expect(route[0].x).toBe(0)
+      expect(route[0].y).toBe(0)
+      expect(route[1].x).toBe(7)
+      expect(route[1].y).toBe(0)
+      expect(route[2].x).toBe(7)
+      expect(route[2].y).toBe(5)
     })
   })
 

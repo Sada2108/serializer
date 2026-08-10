@@ -734,11 +734,19 @@ Circuit JSON + NIR
 
 ## 8. KiCad DRC Status
 
-**rc_lowpass (`_gen_pcb.ts rc_lowpass`):** 0 violations, 0 unconnected items — clean.
+**rc_lowpass (`serializeNirAsync`, real pipeline):** 0 violations, 0 unconnected items — clean.
 
-**opamp (`_gen_pcb.ts opamp`):** ~175 violations (64 shorting_items, 61 solder_mask_bridge, 44 clearance, 8 unconnected, 3 tracks_crossing, 3 silk_over_copper). This is pre-existing autorouter quality noise from CapacityMeshSolver (`effort: 1`, stochastic) — the exact count varies run-to-run (earlier baseline: 253). It is NOT caused by the schema v1.2 / sheet-context migration, which only touches schematic elements.
+**opamp (`serializeNirAsync`, real pipeline):** 3 silk_over_copper warnings (R3/R4/R5 VREF reference fields overlapping pad solder mask), 0 violations of shorting/clearance/tracks_crossing type, 0 unconnected items.
 
-Earlier opamp-era baseline (pre-migration, from CONTEXT history): 0 errors, 0 unconnected, 3 silk_over_copper warnings on R3/R4/R5 (0402 passives packed in a row, center-placement fallback where the 0.8mm text box overlaps pad solder mask). These are warnings — the fab house clips silkscreen over pads.
+**Root cause found (2026-08-10):** earlier high violation counts (152 via `_gen_pcb.ts`, ~175/253 CapacityMesh baselines, 15 via `serializeNirAsync`) were NOT autorouter quality noise. They came from `mergeCollinearSegments` (serializer/pcbRouting.ts): it merged adjacent route points A,B whenever they shared an x or y coordinate (pairwise same-axis check), without checking whether the segment before A was collinear with the A→B direction — silently deleting legitimate route pivots. In rc_lowpass this turned a valid diagonal-then-vertical GND route `(0,-1.27)->(2.46,1.19)->(2.46,4.745)` into a phantom straight diagonal clipping the VIN pad (0.0115mm clearance violation) and absorbed VIN/VOUT start points into degenerate/stub traces (2 unconnected items).
+
+**Fix (`mergeCollinearSegments`):** replaced the pairwise same-axis check with a true three-point cross-product collinearity test (`COLLINEAR_EPSILON = 1e-6`): consecutive points A,B,C (same layer, all wire) only drop B when `|(B-A)×(C-B)| < 1e-6`. Router-valid output now passes through the whole `serializeNirAsync` pipeline (removeZeroLength → mergeCollinear → enforceTracePadClearance → chamfer) unchanged.
+
+**New verified baseline (real `serializeNirAsync` → kicad-cli pcb drc):**
+- rc_lowpass: **0 violations, 0 unconnected**
+- opamp: **3 silk_over_copper warnings, 0 unconnected** (R3/R4/R5 reference-field-over-pad — matches the historical pre-migration baseline exactly; these are warnings, the fab house clips silkscreen over pads)
+
+This is NOT the same pipeline as `_gen_pcb.ts` — that script discards CircuitRunner traces and re-routes via CapacityMeshSolver+Manhattan snap (a separate path that was never exposed to this bug).
 
 ---
 

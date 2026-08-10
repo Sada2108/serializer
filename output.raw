@@ -1,5 +1,5 @@
 Title: * rc low-pass filter — golden fixture for simulator regression tests
-Date: Fri Jul 17 12:59:34  2026
+Date: Sat Aug  8 08:33:09  2026
 Command: ngspice-46, Build 
 Plotname: Transient Analysis
 Flags: real
