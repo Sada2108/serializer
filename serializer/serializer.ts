@@ -40,6 +40,7 @@ import type {
   NirV11NetlistEntry,
   NirV11BoardSpec,
   NirV11PlacementConstraint,
+  NirV11FootprintPad,
   NirV11,
 } from "./fixtures"
 import { circuitJsonToKicadPcb } from "./kicadPcbWriter"
@@ -315,6 +316,12 @@ function fixPinName(pinName: string): string {
   return PIN_NAME_FIXUP[pinName] ?? pinName.replace(/[^A-Za-z0-9_]/g, "_")
 }
 
+// Some NIR fixtures carry only `pin_number` — fall back to the number when
+// `pin_name` is absent so traces/pinLabels still resolve.
+function pinLabelFor(conn: NirV11Connection): string {
+  return conn.pin_name != null ? conn.pin_name : String(conn.pin_number ?? 1)
+}
+
 // Map semantic pin names (POSITIVE/NEGATIVE/IN/OUT/PIN1/PIN2) onto passive pin1/pin2
 const SEMANTIC_TO_PASSIVE: Record<string, "pin1" | "pin2"> = {
   "POSITIVE": "pin1", "IN": "pin1", "ANODE": "pin1", "A": "pin1", "P": "pin1", "PIN1": "pin1",
@@ -344,11 +351,12 @@ export function generateTscircuitJsx(nir: NirV11): string {
       const isPassive = elementType === "resistor" || elementType === "capacitor" || elementType === "diode" || elementType === "inductor"
       // Passives only have pin1/pin2 — resolve semantic alias if present
       // Chips use fixed pin names valid in tscircuit (letters/numbers/underscores)
-      const pin = isPassive && SEMANTIC_TO_PASSIVE[conn.pin_name]
-        ? SEMANTIC_TO_PASSIVE[conn.pin_name]
+      const pinName = pinLabelFor(conn)
+      const pin = isPassive && SEMANTIC_TO_PASSIVE[pinName]
+        ? SEMANTIC_TO_PASSIVE[pinName]
         : isPassive
-          ? conn.pin_name
-          : fixPinName(conn.pin_name)
+          ? pinName
+          : fixPinName(pinName)
       traceLines.push(`    <trace from="${conn.ref}.${pin}" to="net.${sanitizeNetNameForJsx(net.net_name)}" />`)
     }
   }
@@ -390,6 +398,53 @@ ${traceJsx}
 )`
 }
 
+// Build an inline tscircuit <footprint> JSX block from NIR-provided real pad
+// geometry (see NirV11FootprintPad / comp.custom_footprint_pads). Used in
+// place of a string footprint reference so PCB rendering never depends on
+// kicad-mod-cache.tscircuit.com having a copy of a project-custom KiCad
+// footprint — it never will, since those "Library:"/custom "Sensors:" names
+// aren't part of the official KiCad footprint libraries the cache mirrors.
+//
+// Coordinate/rotation convention: pad x_mm/y_mm/rotation_deg are copied
+// verbatim from the source .kicad_pcb's pad `(at x y rot)` s-expression —
+// i.e. KiCad's native pad-local frame (position relative to the footprint's
+// own unrotated origin) with KiCad's clockwise-positive rotation. This
+// pipeline's own kicadPcbWriter.ts establishes (see its "KiCad uses CW
+// rotation" comment) that circuit-json/tscircuit angles are the
+// CCW-positive complement of KiCad's, and that no Y-axis flip is applied
+// between the two conventions anywhere else in this pipeline — so x_mm/y_mm
+// are passed straight through here and rotation_deg is negated for
+// ccwRotation. This has NOT been visually verified against a render (no
+// live run in this environment) — sanity-check pad placement/orientation
+// against the datasheet after running render:pcb, and flip the rotation
+// sign here if any pad looks mirrored or rotated the wrong way.
+function generateInlineFootprintJsx(pads: NirV11FootprintPad[]): string {
+  const padJsx = pads.map((p) => {
+    const ccwRotation = ((-(p.rotation_deg ?? 0) % 360) + 360) % 360
+    const rotAttr = ccwRotation ? ` ccwRotation={${ccwRotation}}` : ""
+    if (p.type === "thru_hole") {
+      // tscircuit <platedhole> only supports a circular shape; a KiCad
+      // "custom" shaped thru-hole pad (see _note) is approximated as a
+      // circle sized to the pad's bounding box.
+      const outerDiameter = Math.max(p.width_mm, p.height_mm)
+      const holeDiameter = p.drill_mm ?? outerDiameter * 0.7
+      return `<platedhole portHints={["${p.pin}"]} pcbX="${p.x_mm}mm" pcbY="${p.y_mm}mm" outerDiameter="${outerDiameter}mm" holeDiameter="${holeDiameter}mm" shape="circle" />`
+    }
+    // KiCad "oval"/"circle" pads: tscircuit <smtpad> has no oval primitive.
+    // Every oval pad in this fixture is width===height (a round pad drawn as
+    // an oval), so a circle of the same diameter is exact, not an
+    // approximation — this only degrades fidelity if a *non-square* oval
+    // pad is ever added upstream, in which case width/height should be
+    // checked here and mapped to shape="pill" instead.
+    if (p.shape === "oval" || p.shape === "circle") {
+      const radius = Math.max(p.width_mm, p.height_mm) / 2
+      return `<smtpad portHints={["${p.pin}"]} pcbX="${p.x_mm}mm" pcbY="${p.y_mm}mm" radius="${radius}mm" shape="circle" />`
+    }
+    return `<smtpad portHints={["${p.pin}"]} pcbX="${p.x_mm}mm" pcbY="${p.y_mm}mm" width="${p.width_mm}mm" height="${p.height_mm}mm" shape="rect"${rotAttr} />`
+  }).join("\n      ")
+  return `{<footprint>\n      ${padJsx}\n    </footprint>}`
+}
+
 function generateComponentJsx(comp: NirV11Component, netlist: NirV11NetlistEntry[]): string {
   const elementType = mapComponentType(comp.component_type)
   const isPassive = elementType === "resistor" || elementType === "capacitor" || elementType === "diode" || elementType === "inductor"
@@ -401,8 +456,8 @@ function generateComponentJsx(comp: NirV11Component, netlist: NirV11NetlistEntry
   for (const net of netlist) {
     for (const conn of net.connections) {
       if (conn.ref === comp.ref) {
-        pinNames.add(conn.pin_name)
-        if (conn.pin_number != null) pinNumberMap.set(conn.pin_name, String(conn.pin_number))
+        pinNames.add(pinLabelFor(conn))
+        if (conn.pin_number != null) pinNumberMap.set(pinLabelFor(conn), String(conn.pin_number))
       }
     }
   }
@@ -414,8 +469,21 @@ function generateComponentJsx(comp: NirV11Component, netlist: NirV11NetlistEntry
   // Simulation-only sources (e.g. SPICE VPULSE) have footprint:null by design
   // (DNP — do not populate). Skip the footprint prop so kicadFootprint() never
   // receives null.
+  //
+  // Components carrying `custom_footprint_pads` (real pad geometry lifted
+  // straight from a source .kicad_pcb — see NirV11FootprintPad) get an
+  // inline <footprint> built from that data instead of a "kicad:lib/part"
+  // string reference. This is required for any footprint namespaced outside
+  // the official KiCad libraries (a project-local "Library:" or a
+  // hand-rolled "Sensors:<custom>" path): kicad-mod-cache.tscircuit.com only
+  // mirrors the official libraries, so those string references 404 forever.
   if (!isSimulationOnly) {
-    props.push(`footprint="${kicadFootprint(comp.footprint)}"`)
+    const customPads = comp.custom_footprint_pads
+    if (customPads && customPads.length > 0) {
+      props.push(`footprint=${generateInlineFootprintJsx(customPads)}`)
+    } else {
+      props.push(`footprint="${kicadFootprint(comp.footprint)}"`)
+    }
   }
 
   // Value prop depends on component type
@@ -1144,13 +1212,34 @@ const KNOWN_PACKAGE_PIN_COUNTS: [string, number][] = ([
   ["D2PAK-7", 7], ["D2PAK-5", 5], ["D2PAK-3", 3], ["D2PAK", 3],
   ["DPAK-5", 5], ["DPAK-3", 3], ["DPAK", 3],
   ["TO-126", 3], ["TO-251", 3], ["TO-92", 3],
+
+  // astracomputer fixture — package strings don't carry a recognizable pin
+  // count token, so counts below were looked up from vendor datasheets/specs
+  // (2026-08-16). See dev-tools/render_pcb_viewer.ts astracomputer run.
+  ["SW_SPST_PTS810", 2],                     // Button_Switch_SMD:SW_SPST_PTS810 — tact switch, 2 elec. pin numbers (4 legs, KiCad stock footprint)
+  ["BUZZER_12X9.5RM7.6", 2],                 // Buzzer_Beeper:Buzzer_12x9.5RM7.6 — 2-pin THT buzzer
+  ["MICROSD_HC_HIROSE_DM3D-SF", 11],         // Connector_Card:... — Hirose DM3 series: 8 signal + 2 card-detect + 1 shield pad number (KiCad stock footprint has pads 1-11)
+  ["USB_C_RECEPTACLE_PALCONN_UTC16-G", 17],  // Connector_USB:... — 16 signal positions (A/B rows) + 1 shield pad "S1" (KiCad stock footprint)
+  ["LINX_CONSMA022-G", 5],                   // Library:... (custom) — verified against the real Astra_Computer_V2.kicad_pcb source: 1 signal (rect SMD) + 4 ground/shield legs (pads 2-5, thru-hole)
+  ["L_0402_1005METRIC", 2],                  // Inductor_SMD:... — 2-pin inductor
+  ["L_BOURNS-SRN4018", 2],                   // Inductor_SMD:... — 2-pin power inductor
+  ["ESP32-S3-WROOM-1", 41],                  // RF_Module:ESP32-S3-WROOM-1(U) — Espressif datasheet: 41 pins, pin 41 = EPAD
+  ["QFN10_BMP581_BOS", 10],                  // Library:... (custom) — Bosch BMP581: 10-pin LGA (cross-checked against Astra_Computer_V2.kicad_pcb: exactly 10 pads)
+  ["LGA_M10Q-00B_UBL", 53],                  // Sensors:... (custom) — u-blox MIA-M10Q-00B: 53-pin S-LGA (cross-checked against Astra_Computer_V2.kicad_pcb: exactly 53 pads)
+  ["IC_BNO085", 28],                         // Library:... (custom) — CEVA/Bosch BNO085: 28-pin LGA (cross-checked against Astra_Computer_V2.kicad_pcb: exactly 28 pads)
+  ["CC7V-T1A-2PIN", 2],                      // Crystal:...CC7V-T1A-2Pin... — 2-pin crystal
 ] as [string, number][]).sort((a, b) => b[0].length - a[0].length)
 
 export function parsePinCountFromFootprint(footprint: string): number | null {
   if (!footprint) return null
   const upper = footprint.toUpperCase()
   for (const [pkg, count] of KNOWN_PACKAGE_PIN_COUNTS) {
-    if (upper.includes(pkg)) return count
+    if (upper.includes(pkg)) {
+      // KiCad's "-1EP" suffix marks a single exposed pad beyond the signal
+      // pins (e.g. QFN-32-1EP = 33 pads total; the EP is pin 33 in the
+      // netlist).
+      return /(?:^|[\-_/])1EP(?:[\-_/]|$)/.test(upper) ? count + 1 : count
+    }
   }
   // Connector row×pins convention: "PinHeader_1x08", "PinHeader_2x03",
   // "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" → rows × cols.

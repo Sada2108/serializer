@@ -23,6 +23,7 @@ import {
   timer555Nir,
   audioAmplifier1386Nir,
   audioAmplifierLm386Nir,
+  astraComputerNir,
   type NirV11,
 } from "../serializer/fixtures/index.ts"
 
@@ -37,6 +38,7 @@ const FIXTURES: Record<string, NirV11> = {
   "555_timer": timer555Nir as unknown as NirV11,
   audio_amplifier_1386: audioAmplifier1386Nir as unknown as NirV11,
   audioamplifier_lm386: audioAmplifierLm386Nir as unknown as NirV11,
+  astracomputer: astraComputerNir as unknown as NirV11,
 }
 
 // ---------------------------------------------------------------------------

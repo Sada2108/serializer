@@ -13,6 +13,7 @@ import { serializeNirAsync } from "../../layer_three/serializer/serializer.ts"
 import {
   opampNoninvNir, voltageDividerNir, rcLowpassNir, rcLowpassAcNir, rcLowpassFftNir,
   lm358NoninvNir, layer2mockschemaNir, audioAmplifier1386Nir, audioAmplifierLm386Nir,
+  astraComputerNir,
   type NirV11,
 } from "../../layer_three/serializer/fixtures/index.ts"
 
@@ -26,6 +27,7 @@ const FIXTURES = {
   layer2mockschema: layer2mockschemaNir,
   audio_amplifier_1386: audioAmplifier1386Nir,
   audio_amplifier_lm386: audioAmplifierLm386Nir,
+  astracomputer: astraComputerNir as NirV11,
 } as const
 
 type FixtureName = keyof typeof FIXTURES

@@ -17,6 +17,7 @@ import layer2mockschemaNirJson from "./layer2mockschema.nir.json"
 import audioAmplifier1386NirJson from "./audio_amplifier_1386.nir.json"
 import audioAmplifierLm386NirJson from "./audioamplifier_lm386.nir.json"
 import timer555NirJson from "./555_timer.nir.json"
+import astraComputerNirJson from "./astracomputer.nir.json"
 export const opampNoninvNir = opampNoninvNirJson
 export const voltageDividerNir = voltageDividerNirJson
 export const rcLowpassNir = rcLowpassNirJson
@@ -24,6 +25,7 @@ export const rcLowpassAcNir = rcLowpassAcNirJson
 export const rcLowpassFftNir = rcLowpassFftNirJson
 export const lm358NoninvNir = lm358NoninvNirJson
 export const timer555Nir = timer555NirJson
+export const astraComputerNir = astraComputerNirJson as unknown as NirV11
 // --------------------------------------------------------------------------- //
 // v0.1 (Libbrecht-Hall) — legacy schema
 // --------------------------------------------------------------------------- //
@@ -65,6 +67,26 @@ export const libbrechtHallNir: Nir = libbrechtHallNirRaw as unknown as Nir
 // are tolerated so future pass-through fields (e.g. `custom_symbols_required`,
 // `hierarchical_sheets`) can land without type churn.
 
+// A single real pad lifted from a source .kicad_pcb footprint definition
+// (position/rotation are in KiCad's native pad-local frame — see the usage
+// site in serializer.ts's generateInlineFootprintJsx for the sign/axis
+// convention notes). Used to build an inline tscircuit <footprint> for
+// components whose footprint string is a project-custom KiCad library
+// ("Library:...", or a custom "Sensors:..." path) that will never resolve
+// against kicad-mod-cache.tscircuit.com.
+export interface NirV11FootprintPad {
+  pin: string
+  type: "smd" | "thru_hole"
+  shape: string
+  x_mm: number
+  y_mm: number
+  rotation_deg?: number
+  width_mm: number
+  height_mm: number
+  drill_mm?: number
+  _note?: string
+}
+
 export interface NirV11Component {
   [key: string]: unknown
   ref: string
@@ -72,6 +94,11 @@ export interface NirV11Component {
   component_type: string
   footprint: string
   footprint_geometry_ref?: string
+  // Real pad geometry extracted from a source .kicad_pcb, for footprints
+  // that aren't resolvable through kicad-mod-cache.tscircuit.com (see
+  // NirV11FootprintPad doc comment). Optional — most components rely on the
+  // plain `footprint` string + KNOWN_PACKAGE_PIN_COUNTS instead.
+  custom_footprint_pads?: NirV11FootprintPad[]
   value?: string | null
   ac_magnitude?: string | null
   manufacturer?: string
